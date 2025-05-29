@@ -1,0 +1,19 @@
+<header>
+  <h1>SonicGuessr</h1>
+  <nav>
+    <ul>
+      <li><a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">Home</a></li>
+      <li><a routerLink="/daily-challenge" routerLinkActive="active">Daily Challenge</a></li>
+      <li><a routerLink="/leaderboard" routerLinkActive="active">Leaderboard</a></li>
+      <li><a routerLink="/login" routerLinkActive="active">Login</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main>
+  <router-outlet></router-outlet>
+</main>
+
+<footer>
+  <p>&copy; 2025 Your Game Name</p>
+</footer>
