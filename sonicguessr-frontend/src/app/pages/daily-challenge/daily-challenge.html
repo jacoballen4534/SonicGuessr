@@ -1,1 +1,26 @@
-<p>daily-challenge works!</p>
+<div>
+  <h2>Today's Challenge Songs</h2>
+  
+  <div *ngIf="isLoading">
+    <p>Loading songs...</p>
+  </div>
+
+  <div *ngIf="error">
+    <p style="color: red;">{{ error }}</p>
+  </div>
+
+  <div *ngIf="!isLoading && !error && dailySongs.length === 0">
+    <p>No songs available for today's challenge yet. Please check back later.</p>
+  </div>
+
+  <ul *ngIf="!isLoading && !error && dailySongs.length > 0">
+    <li *ngFor="let song of dailySongs; let i = index">
+      <h3>Song #{{ i + 1 }}</h3>
+      <p><strong>Title:</strong> {{ song.title }}</p>
+      <p><strong>Artist:</strong> {{ song.artist }}</p>
+      <p><strong>YouTube Video ID:</strong> {{ song.youtube_video_id }}</p>
+      <img *ngIf="song.album_art_url" [src]="song.album_art_url" alt="Album art for {{ song.title }}" width="100">
+      <hr *ngIf="i < dailySongs.length - 1">
+    </li>
+  </ul>
+</div>
