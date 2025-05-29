@@ -1,26 +1,46 @@
 <div>
-  <h2>Today's Challenge Songs</h2>
-  
+  <h2>Today's Challenge</h2>
+
   <div *ngIf="isLoading">
     <p>Loading songs...</p>
   </div>
-
   <div *ngIf="error">
     <p style="color: red;">{{ error }}</p>
   </div>
 
-  <div *ngIf="!isLoading && !error && dailySongs.length === 0">
+  <div *ngIf="!isLoading && !error && !activeSong && dailySongs.length > 0">
+    <button (click)="startChallengeWithFirstSong()">Start Challenge</button>
+  </div>
+  
+  <div *ngIf="!isLoading && !error && dailySongs.length === 0 && !activeSong">
     <p>No songs available for today's challenge yet. Please check back later.</p>
   </div>
 
-  <ul *ngIf="!isLoading && !error && dailySongs.length > 0">
-    <li *ngFor="let song of dailySongs; let i = index">
-      <h3>Song #{{ i + 1 }}</h3>
-      <p><strong>Title:</strong> {{ song.title }}</p>
-      <p><strong>Artist:</strong> {{ song.artist }}</p>
-      <p><strong>YouTube Video ID:</strong> {{ song.youtube_video_id }}</p>
-      <img *ngIf="song.album_art_url" [src]="song.album_art_url" alt="Album art for {{ song.title }}" width="100">
-      <hr *ngIf="i < dailySongs.length - 1">
-    </li>
-  </ul>
+  <div *ngIf="activeSong">
+    <h3>Playing Song #{{ activeSongIndex + 1 }} of {{ dailySongs.length }}</h3>
+    <p><strong>Title Hint (Dev only):</strong> {{ activeSong.title }}</p>
+    <p><strong>Artist Hint (Dev only):</strong> {{ activeSong.artist }}</p>
+    <img *ngIf="activeSong.album_art_url" [src]="activeSong.album_art_url" alt="Album art" width="150">
+    
+    <p>Current Snippet Level: {{ SNIPPET_LEVELS[currentSnippetLevelIndex].durationText || 'N/A' }}</p>
+
+    <button (click)="playCurrentSnippet()">Play Current Snippet</button>
+    
+    <button (click)="playNextSnippetLevel()" 
+            [disabled]="currentSnippetLevelIndex >= SNIPPET_LEVELS.length - 1">
+      Play Next Snippet Level (if available)
+    </button>
+    
+    <button (click)="nextSong()" 
+            [disabled]="activeSongIndex >= dailySongs.length - 1">
+      Next Song (DEV - skip)
+    </button>
+  </div>
+
+  <app-audio-player
+    [videoId]="playbackVideoId"
+    [startSeconds]="playbackStartSeconds"
+    [endSeconds]="playbackEndSeconds">
+  </app-audio-player>
+  
 </div>
