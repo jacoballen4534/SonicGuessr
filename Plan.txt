@@ -1,230 +1,111 @@
-Project Plan: Raspberry Pi Song Guesser Game (v3 - Angular Frontend)
+Project Plan: Raspberry Pi Song Guesser Game (v3.2 - Angular Frontend with Spotify/YouTube - Audio Focused)
+
 1. Project Overview & Goals
-The goal is to create a web-based "guess the song" game called SonicGuessr, hosted on a Raspberry Pi. The primary game mode will be a Daily Challenge. Users will listen to short audio snippets (from Deezer API previews/extracts) and try to guess the song title. The frontend will be built using Angular, and the backend API with Node.js/Express. The game will feature user accounts via Google Sign-In and personalized usernames.
+The goal is to create a web-based "guess the song" game called SonicGuessr, hosted on a Raspberry Pi. The primary game mode will be a Daily Challenge. Users will listen to short audio snippets (played via embedded YouTube videos, carefully selected to prioritize official audio or lyric versions and avoid lengthy music video intros, sourced using song metadata from Spotify) and try to guess the song title. The frontend will be built using Angular, and the backend API with Node.js/Express. The game will feature user accounts via Google Sign-In and personalized usernames.
 
 Key Features:
 
-Daily Challenge Mode with server-side caching of Spotify preview URLs.
-
+Daily Challenge Mode with server-side caching of Spotify metadata and corresponding YouTube Video IDs (chosen through a refined selection process).
 Angular single-page application (SPA) for the frontend.
-
 Node.js/Express backend API.
-
-Song playback with progressively longer snippets from Spotify previews.
-
+Song playback with progressively longer snippets from embedded YouTube videos.
 Autocomplete for song title guesses.
-
 User authentication with Google.
-
 SQLite database for user data, daily challenges, and scores.
-
 Self-hosted on a Raspberry Pi.
-
 2. Technology Stack
+
 Backend: Node.js, Express.js
-
 Frontend: Angular (using Angular CLI)
-
 Database: SQLite
-
 Authentication (User): Google Sign-In (Backend: Passport.js; Frontend: Angular handling)
-
-Song Source API: Spotify Web API (initially)
-
+Song Metadata API: Spotify Web API
+Song Audio Source: YouTube Data API v3 (for search) & YouTube Iframe Player API (for playback)
 Scheduling (Backend): node-cron for daily song fetching.
-
 Styling (Frontend): CSS, potentially a UI component library for Angular (e.g., Angular Material, or a CSS framework like Tailwind CSS / Bootstrap).
-
 Hosting Environment: Raspberry Pi (Node.js, npm, Angular CLI for building)
-
 3. Architecture Overview
+
 Node.js/Express Backend:
-
 Provides a RESTful API for the Angular frontend.
-
 Manages the SQLite database.
-
 Handles user authentication logic (Google OAuth2 callback).
-
-Includes the Song Acquisition Service for interacting with Spotify.
-
+Includes the Song Acquisition Service for interacting with Spotify and YouTube APIs, implementing a refined strategy to select audio-focused YouTube content.
 Runs the daily cron job for curating challenge songs.
-
-Angular Frontend:
-
-A Single Page Application (SPA) built with Angular components and services.
-
-Handles all user interface rendering and interactions.
-
-Communicates with the backend API to fetch data and submit actions.
-
-Manages client-side state.
-
-Deployment:
-
-The Angular application will be built into static assets (ng build).
-
-The Node.js/Express server will be configured to serve these static Angular files as well as its API routes.
-
-During development, the Angular app (e.g., on http://localhost:4200) will make requests to the backend API (e.g., on http://localhost:3000). CORS (Cross-Origin Resource Sharing) will need to be configured on the Express backend to allow these cross-origin requests.
-
+Angular Frontend: (Remains the same as v3.1)
+Deployment: (Remains the same as v3.1)
 4. Development Phases
+
 Phase 1: Backend API Setup (Node.js & Express)
-Project Setup: Initialize Node.js project, install dependencies (Express, SQLite3, Axios, node-cron, dotenv, Passport, CORS).
 
-Configuration: Setup config.js for constants and environment variables (API keys, ports, database path).
-
-Database Service: Initialize SQLite, define schemas for users, daily_challenges, scores.
-
-Song Acquisition Service:
-
-Modular service to interact with Spotify API (Client Credentials Flow for access tokens).
-
-Functions to fetch track details (including preview_url).
-
-Daily Song Curator Job:
-
+Project Setup: (Remains the same as v3.1)
+Configuration: (Remains the same as v3.1 - Spotify Client ID & Secret, YouTube API Key)
+Database Service: (Remains the same as v3.1 - daily_challenges table stores Spotify metadata and YouTube Video ID)
+Song Acquisition Service (Refined Logic):
+Modular service to interact with Spotify API (Client Credentials Flow for access tokens) and YouTube Data API v3.
+Functions to:
+Fetch track details (title, artist, album, cover art URL, Spotify track duration if available) from Spotify.
+For each Spotify track, implement a refined Youtube and selection strategy:
+Prioritized Search Queries: Systematically try search queries on YouTube Data API v3 in order of preference:
+"Artist - TrackName Official Audio"
+"Artist - TrackName Lyric Video"
+"Artist - TrackName Audio"
+"Artist - TrackName Topic" (as "Topic" channels often host audio-only versions)
+(Fallback) “Artist - TrackName”
+API Parameters: Use type=video, videoCategoryId=10 (Music), videoEmbeddable=true. Consider videoDuration (short/medium) if helpful.
+Enhanced Filtering of Results: For each query's results:
+Title Keyword Prioritization: Highest preference for titles explicitly matching "Official Audio," then "Lyric Video," then "Audio."
+Deprioritize/Avoid: Titles strongly indicating "Official Music Video," "Official Video," "Live," "Cover," "Remix" (unless desired), "Interview," "Teaser."
+Channel Heuristics: Favor videos from channels that appear official (e.g., artist's VEVO, official artist channel).
+Duration Check: Compare YouTube video duration (parsed from API) with Spotify track duration. Aim for close matches to avoid intros/outros or incorrect versions.
+Iterative Selection: Select the first high-confidence match from the prioritized search queries.
+Fallback/Skipping: If no suitable audio-focused video is found after trying all preferred queries and filtering, log the failure for this track and attempt to fetch an alternative track from Spotify to meet the daily quota. This prioritizes audio quality for the game.
+Retrieve the YouTube Video ID of the selected video.
+Daily Song Curator Job (Modified):
 Use node-cron to schedule a daily job.
-
-Job uses Song Acquisition Service to fetch DAILY_SONG_COUNT tracks.
-
-Caches Spotify preview URLs and metadata (NOT audio files) in daily_challenges table.
-
-API Routes (Express Router):
-
-/api/daily-challenge/songs: GET current day's songs.
-
-/api/daily-challenge/guess: POST user's guess.
-
-/api/songs/autocomplete: GET autocomplete suggestions.
-
-/auth/google: (Placeholder) Routes for Google Sign-In.
-
-/api/user/profile: (Placeholder) GET user profile.
-
-CORS Configuration: Implement cors middleware in Express to allow requests from the Angular development server.
-
+Job uses the refined Song Acquisition Service to:
+Fetch DAILY_SONG_COUNT track metadata from Spotify.
+For each track, search YouTube using the refined strategy to find a suitable audio-focused source and retrieve its YouTube Video ID.
+Caches Spotify metadata and the chosen YouTube Video ID in the daily_challenges table.
+API Routes (Express Router): (Remains the same as v3.1)
+CORS Configuration: (Remains the same as v3.1)
 Phase 2: Angular Frontend Foundation
-Install Angular CLI: npm install -g @angular/cli.
-
-Generate New Angular Project: ng new song-guesser-frontend --routing --style=css (or your preferred stylesheet format like SCSS).
-
-Project Structure: Understand basic Angular project layout (modules, components, services).
-
-Environment Configuration: Set up Angular environment files (environment.ts, environment.prod.ts) to store the backend API base URL.
-
-Core Components/Modules:
-
-AppComponent (root component).
-
-CoreModule (for singleton services).
-
-SharedModule (for reusable components, pipes, directives).
-
-API Service: Create an Angular service (e.g., ApiService or BackendService) to handle all HTTP communication with the backend. This service will use Angular's HttpClientModule.
+(Remains the same as v3.1)
 
 Phase 3: Core Gameplay - Frontend (Angular Components & Services)
+
 Game Module & Components:
-
-Create a GameModule (lazy-loaded potentially).
-
-DailyChallengeComponent: Main component to manage the daily game flow.
-
-SongDisplayComponent: Displays current song number, album art (optional).
-
-AudioPlayerComponent: Manages HTML5 audio playback, plays snippets of controlled duration from Spotify preview URL.
-
-GuessInputComponent: Handles guess input and displays autocomplete suggestions fetched via API.
-
-FeedbackComponent: Displays messages (correct/incorrect, errors).
-
-Game Service (Angular):
-
-GameService to manage game state (current song, current level, score).
-
-Interacts with ApiService to fetch daily songs and submit guesses.
-
-Implement Game Flow:
-
-Fetch daily songs on component initialization.
-
-Control snippet playback based on level.
-
-Handle guess submission and feedback.
-
-Progress through songs.
-
+DailyChallengeComponent (Remains the same)
+SongDisplayComponent (Remains the same)
+AudioPlayerComponent (Important Considerations):
+Manages an embedded YouTube player using the YouTube Iframe Player API.
+Loads songs by YouTube Video ID.
+Programmatically controls playback for snippets (play, pause, seekTo).
+Snippet Start Time: Since even "Official Audio" or "Lyric Videos" might have brief silent intros or outros, consider making the startTimeInSeconds for snippets configurable, or start a few seconds in (e.g., 5-10 seconds) to bypass potential quiet beginnings, or even a random point within a safe range of the song. This might require fetching video duration from YouTube on the frontend if not already stored, or having the backend provide a suggested start offset.
+GuessInputComponent (Remains the same)
+FeedbackComponent (Remains the same)
+Game Service (Angular): (Remains the same as v3.1)
+Implement Game Flow: (Remains the same as v3.1)
 Phase 4: User Authentication (Google Sign-In - Backend & Angular)
-Backend (Node.js):
-
-Implement Passport.js with passport-google-oauth20 strategy.
-
-Set up /auth/google and /auth/google/callback routes.
-
-Session management or JWT strategy for authenticating API requests from Angular.
-
-User creation/lookup in the database.
-
-Frontend (Angular):
-
-AuthService to handle login/logout, manage user session/token.
-
-Login/Logout buttons/components.
-
-Display user profile information.
-
-AuthGuard to protect routes that require authentication.
-
-Handle redirect from Google callback (if applicable, or token exchange).
+(Remains the same as v3.1)
 
 Phase 5: Scoring, Leaderboard, and Refinements (Backend & Angular)
-Backend (Node.js):
-
-Implement scoring logic in the /api/daily-challenge/guess endpoint.
-
-Store scores in the scores table.
-
-Create API endpoint /api/leaderboard/daily to fetch top scores for the day.
-
-Frontend (Angular):
-
-LeaderboardComponent to display daily scores.
-
-Display user's current score during gameplay.
-
-UI/UX Polish: Improve styling, add animations/transitions, ensure responsiveness.
-
-Error Handling: Robust error handling on both frontend and backend.
+(Remains the same as v3.1)
 
 Phase 6: Raspberry Pi Deployment
-Build Angular App: Run ng build --configuration production to create optimized static assets in a dist/ folder.
+(Remains the same as v3.1)
 
-Configure Express Server:
+5. Song Data - Spotify Metadata & Refined YouTube Audio Strategy (Rewritten with Refinements)
 
-Modify Express server to serve static files from the Angular build output directory (e.g., dist/song-guesser-frontend/browser).
-
-Ensure all non-API routes are routed to Angular's index.html to support SPA routing.
-
-Deploy to Raspberry Pi:
-
-Transfer both backend code and the built Angular assets to the Pi.
-
-Install backend dependencies (npm install --production).
-
-Set up environment variables on the Pi.
-
-Use a process manager like pm2 to run the Node.js server.
-
-Ensure port forwarding is correctly set up on your router.
-
-5. Song Data - Spotify API & Caching Strategy
-(Remains the same as Plan v2: Spotify API for 30-second preview URLs, server caches URLs and metadata daily, client streams directly from Spotify URLs).
-
+Song Metadata: Song information (title, artist, album, cover art URL, Spotify track duration) will be sourced from the Spotify Web API.
+Audio Source: Audio snippets will be played using the YouTube Iframe Player API, by loading and controlling embedded YouTube videos.
+Backend Caching Strategy (with Refined Selection):
+The Node.js server will run a daily cron job.
+This job will query the Spotify API to select a list of songs.
+For each song from Spotify, the server will query the YouTube Data API v3 using a refined, prioritized search strategy (favoring "Official Audio," "Lyric Video," etc., and filtering results based on titles, duration, and channel heuristics) to find the most suitable audio-focused YouTube video.
+If a suitable match is found, the server will cache the Spotify song metadata along with the YouTube Video ID in the daily_challenges database table. If no suitable match is found, the song may be skipped.
+Frontend Playback Strategy: (Remains the same as v3.1, with the added consideration for snippet start times in AudioPlayerComponent)
+Considerations & Quotas: (Remains the same as v3.1 – YouTube Data API quotas, Terms of Service)
 6. Next Steps (After this plan is accepted)
-Spotify Developer Account Setup: (As in Plan v2 - get Client ID & Secret).
+(Remains the same as v3.1 – Spotify Developer Account, Google Cloud Project for YouTube Data API & Google Sign-In, then begin Phase 1)
 
-Google Cloud Project Setup: (As in Plan v2 - for Google Sign-In credentials).
-
-Begin Phase 1: Backend API Setup. We will focus on getting the Node.js/Express server running with its core services and API endpoints first.
-
-Proceed to Phase 2: Angular Frontend Foundation by setting up the Angular project structure.

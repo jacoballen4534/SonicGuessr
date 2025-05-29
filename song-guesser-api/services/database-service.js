@@ -1,12 +1,13 @@
 // File: services/database-service.js
-// Description: Handles SQLite database connection and operations.
 // Changes:
-// - In `createSessionsTable`, changed column `expire` to `expired`.
+// - In `createDailyChallengesTable`:
+//   - Removed `preview_url TEXT,`
+//   - Added `youtube_video_id TEXT,`
 
 const sqlite3 = require('sqlite3').verbose();
 const { DATABASE_FILE } = require('../config');
 
-let db; // Will be initialized after connection
+let db;
 
 const dbInitializationPromise = new Promise((resolve, reject) => {
     db = new sqlite3.Database(DATABASE_FILE, (err) => {
@@ -19,7 +20,6 @@ const dbInitializationPromise = new Promise((resolve, reject) => {
     });
 });
 
-// Function to initialize database tables
 function initializeDatabase() {
     return new Promise((resolve, reject) => {
         const createUsersTable = `
@@ -37,19 +37,20 @@ function initializeDatabase() {
         const createDailyChallengesTable = `
             CREATE TABLE IF NOT EXISTS daily_challenges (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                challenge_date TEXT NOT NULL, -- YYYY-MM-DD
+                challenge_date TEXT NOT NULL, 
                 song_order INTEGER NOT NULL,
-                source_name TEXT NOT NULL,
-                track_id_from_source TEXT NOT NULL,
+                source_name TEXT NOT NULL, -- e.g., "spotify" (for metadata source)
+                track_id_from_source TEXT NOT NULL, -- Spotify track ID
                 title TEXT NOT NULL,
                 artist TEXT NOT NULL,
-                preview_url TEXT,
-                album_art_url TEXT,
-                duration_ms INTEGER,
+                album_art_url TEXT, -- Spotify album art
+                duration_ms INTEGER, -- Spotify track duration
+                youtube_video_id TEXT, -- <<< ADDED: YouTube video ID for audio
                 UNIQUE(challenge_date, song_order),
-                UNIQUE(challenge_date, track_id_from_source)
+                UNIQUE(challenge_date, track_id_from_source) 
             );
         `;
+        // Note: `preview_url` was removed from the schema above.
 
         const createScoresTable = `
             CREATE TABLE IF NOT EXISTS scores (
@@ -64,15 +65,13 @@ function initializeDatabase() {
             );
         `;
         
-        // Session table (if using connect-sqlite3 with default table name)
         const createSessionsTable = `
             CREATE TABLE IF NOT EXISTS sessions (
                 sid TEXT PRIMARY KEY,
                 sess TEXT NOT NULL,
-                expired INTEGER NOT NULL -- CHANGED 'expire' to 'expired'
+                expired INTEGER NOT NULL 
             );
         `;
-
 
         db.serialize(() => {
             const promises = [];
@@ -98,9 +97,7 @@ function initializeDatabase() {
     });
 }
 
-// Export the database connection (it will be defined once the promise resolves)
-// and the initialization promise.
 module.exports = {
-    getDb: () => db, // Function to get the db instance
+    getDb: () => db,
     dbInitializationPromise
 };

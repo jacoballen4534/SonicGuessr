@@ -11,6 +11,9 @@ module.exports = {
     SPOTIFY_ACCOUNTS_URL: 'https://accounts.spotify.com/api/token',
     SPOTIFY_API_BASE_URL: 'https://api.spotify.com/v1',
     SPOTIFY_MARKET: process.env.SPOTIFY_MARKET || 'US',
+    SPOTIFY_PLAYLIST_IDS: process.env.SPOTIFY_PLAYLIST_IDS ? process.env.SPOTIFY_PLAYLIST_IDS.split(',').map(id => id.trim()) : [],
+
+    YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY, // <<< ADD THIS LINE
 
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,

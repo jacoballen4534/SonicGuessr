@@ -13,7 +13,10 @@ const {
     SPOTIFY_CLIENT_SECRET,
     SPOTIFY_ACCOUNTS_URL,
     SPOTIFY_API_BASE_URL,
-    SPOTIFY_MARKET
+    SPOTIFY_MARKET,
+    SPOTIFY_PLAYLIST_IDS, // Your list of curated playlist IDs
+    YOUTUBE_API_KEY,      // Your YouTube Data API v3 Key
+    DAILY_SONG_COUNT
 } = require('../config');
 
 // getAccessToken and fetchTracksFromSpecificPlaylist functions remain the same
@@ -98,7 +101,6 @@ async function fetchFullTrackDetails(trackIds) {
         const batchIds = trackIds.slice(i, i + MAX_IDS_PER_REQUEST);
         try {
             console.log(`fetchFullTrackDetails: Fetching batch of ${batchIds.length} IDs: ${batchIds.join(',')}`);
-            console.log('*** TOKEN ', token);
             
             const response = await axios.get(`${SPOTIFY_API_BASE_URL}/tracks`, {
                 headers: { 'Authorization': `Bearer ${token}` },
