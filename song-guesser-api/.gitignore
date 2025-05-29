@@ -1,0 +1,44 @@
+# File: .gitignore
+
+# Dependencies
+/node_modules
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# SQLite Database file
+# (You might want to commit an empty or schema-only version for setup,
+# but generally, you don't commit the actual data file during development if it's large or changes frequently)
+*.sqlite
+*.sqlite-journal
+
+# Log files
+*.log
+logs
+*.log.*.[0-9]
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build output (if you had any for the backend, though less common for basic Node/Express)
+/dist
+/build
+
+# IDE / Editor specific
+.idea
+.vscode/
+*.swp
+*~

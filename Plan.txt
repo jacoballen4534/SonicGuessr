@@ -1,0 +1,230 @@
+Project Plan: Raspberry Pi Song Guesser Game (v3 - Angular Frontend)
+1. Project Overview & Goals
+The goal is to create a web-based "guess the song" game, hosted on a Raspberry Pi. The primary game mode will be a Daily Challenge. Users will listen to short audio snippets (from Spotify previews) and try to guess the song title. The frontend will be built using Angular, and the backend API with Node.js/Express. The game will feature user accounts via Google Sign-In and personalized usernames.
+
+Key Features:
+
+Daily Challenge Mode with server-side caching of Spotify preview URLs.
+
+Angular single-page application (SPA) for the frontend.
+
+Node.js/Express backend API.
+
+Song playback with progressively longer snippets from Spotify previews.
+
+Autocomplete for song title guesses.
+
+User authentication with Google.
+
+SQLite database for user data, daily challenges, and scores.
+
+Self-hosted on a Raspberry Pi.
+
+2. Technology Stack
+Backend: Node.js, Express.js
+
+Frontend: Angular (using Angular CLI)
+
+Database: SQLite
+
+Authentication (User): Google Sign-In (Backend: Passport.js; Frontend: Angular handling)
+
+Song Source API: Spotify Web API (initially)
+
+Scheduling (Backend): node-cron for daily song fetching.
+
+Styling (Frontend): CSS, potentially a UI component library for Angular (e.g., Angular Material, or a CSS framework like Tailwind CSS / Bootstrap).
+
+Hosting Environment: Raspberry Pi (Node.js, npm, Angular CLI for building)
+
+3. Architecture Overview
+Node.js/Express Backend:
+
+Provides a RESTful API for the Angular frontend.
+
+Manages the SQLite database.
+
+Handles user authentication logic (Google OAuth2 callback).
+
+Includes the Song Acquisition Service for interacting with Spotify.
+
+Runs the daily cron job for curating challenge songs.
+
+Angular Frontend:
+
+A Single Page Application (SPA) built with Angular components and services.
+
+Handles all user interface rendering and interactions.
+
+Communicates with the backend API to fetch data and submit actions.
+
+Manages client-side state.
+
+Deployment:
+
+The Angular application will be built into static assets (ng build).
+
+The Node.js/Express server will be configured to serve these static Angular files as well as its API routes.
+
+During development, the Angular app (e.g., on http://localhost:4200) will make requests to the backend API (e.g., on http://localhost:3000). CORS (Cross-Origin Resource Sharing) will need to be configured on the Express backend to allow these cross-origin requests.
+
+4. Development Phases
+Phase 1: Backend API Setup (Node.js & Express)
+Project Setup: Initialize Node.js project, install dependencies (Express, SQLite3, Axios, node-cron, dotenv, Passport, CORS).
+
+Configuration: Setup config.js for constants and environment variables (API keys, ports, database path).
+
+Database Service: Initialize SQLite, define schemas for users, daily_challenges, scores.
+
+Song Acquisition Service:
+
+Modular service to interact with Spotify API (Client Credentials Flow for access tokens).
+
+Functions to fetch track details (including preview_url).
+
+Daily Song Curator Job:
+
+Use node-cron to schedule a daily job.
+
+Job uses Song Acquisition Service to fetch DAILY_SONG_COUNT tracks.
+
+Caches Spotify preview URLs and metadata (NOT audio files) in daily_challenges table.
+
+API Routes (Express Router):
+
+/api/daily-challenge/songs: GET current day's songs.
+
+/api/daily-challenge/guess: POST user's guess.
+
+/api/songs/autocomplete: GET autocomplete suggestions.
+
+/auth/google: (Placeholder) Routes for Google Sign-In.
+
+/api/user/profile: (Placeholder) GET user profile.
+
+CORS Configuration: Implement cors middleware in Express to allow requests from the Angular development server.
+
+Phase 2: Angular Frontend Foundation
+Install Angular CLI: npm install -g @angular/cli.
+
+Generate New Angular Project: ng new song-guesser-frontend --routing --style=css (or your preferred stylesheet format like SCSS).
+
+Project Structure: Understand basic Angular project layout (modules, components, services).
+
+Environment Configuration: Set up Angular environment files (environment.ts, environment.prod.ts) to store the backend API base URL.
+
+Core Components/Modules:
+
+AppComponent (root component).
+
+CoreModule (for singleton services).
+
+SharedModule (for reusable components, pipes, directives).
+
+API Service: Create an Angular service (e.g., ApiService or BackendService) to handle all HTTP communication with the backend. This service will use Angular's HttpClientModule.
+
+Phase 3: Core Gameplay - Frontend (Angular Components & Services)
+Game Module & Components:
+
+Create a GameModule (lazy-loaded potentially).
+
+DailyChallengeComponent: Main component to manage the daily game flow.
+
+SongDisplayComponent: Displays current song number, album art (optional).
+
+AudioPlayerComponent: Manages HTML5 audio playback, plays snippets of controlled duration from Spotify preview URL.
+
+GuessInputComponent: Handles guess input and displays autocomplete suggestions fetched via API.
+
+FeedbackComponent: Displays messages (correct/incorrect, errors).
+
+Game Service (Angular):
+
+GameService to manage game state (current song, current level, score).
+
+Interacts with ApiService to fetch daily songs and submit guesses.
+
+Implement Game Flow:
+
+Fetch daily songs on component initialization.
+
+Control snippet playback based on level.
+
+Handle guess submission and feedback.
+
+Progress through songs.
+
+Phase 4: User Authentication (Google Sign-In - Backend & Angular)
+Backend (Node.js):
+
+Implement Passport.js with passport-google-oauth20 strategy.
+
+Set up /auth/google and /auth/google/callback routes.
+
+Session management or JWT strategy for authenticating API requests from Angular.
+
+User creation/lookup in the database.
+
+Frontend (Angular):
+
+AuthService to handle login/logout, manage user session/token.
+
+Login/Logout buttons/components.
+
+Display user profile information.
+
+AuthGuard to protect routes that require authentication.
+
+Handle redirect from Google callback (if applicable, or token exchange).
+
+Phase 5: Scoring, Leaderboard, and Refinements (Backend & Angular)
+Backend (Node.js):
+
+Implement scoring logic in the /api/daily-challenge/guess endpoint.
+
+Store scores in the scores table.
+
+Create API endpoint /api/leaderboard/daily to fetch top scores for the day.
+
+Frontend (Angular):
+
+LeaderboardComponent to display daily scores.
+
+Display user's current score during gameplay.
+
+UI/UX Polish: Improve styling, add animations/transitions, ensure responsiveness.
+
+Error Handling: Robust error handling on both frontend and backend.
+
+Phase 6: Raspberry Pi Deployment
+Build Angular App: Run ng build --configuration production to create optimized static assets in a dist/ folder.
+
+Configure Express Server:
+
+Modify Express server to serve static files from the Angular build output directory (e.g., dist/song-guesser-frontend/browser).
+
+Ensure all non-API routes are routed to Angular's index.html to support SPA routing.
+
+Deploy to Raspberry Pi:
+
+Transfer both backend code and the built Angular assets to the Pi.
+
+Install backend dependencies (npm install --production).
+
+Set up environment variables on the Pi.
+
+Use a process manager like pm2 to run the Node.js server.
+
+Ensure port forwarding is correctly set up on your router.
+
+5. Song Data - Spotify API & Caching Strategy
+(Remains the same as Plan v2: Spotify API for 30-second preview URLs, server caches URLs and metadata daily, client streams directly from Spotify URLs).
+
+6. Next Steps (After this plan is accepted)
+Spotify Developer Account Setup: (As in Plan v2 - get Client ID & Secret).
+
+Google Cloud Project Setup: (As in Plan v2 - for Google Sign-In credentials).
+
+Begin Phase 1: Backend API Setup. We will focus on getting the Node.js/Express server running with its core services and API endpoints first.
+
+Proceed to Phase 2: Angular Frontend Foundation by setting up the Angular project structure.
