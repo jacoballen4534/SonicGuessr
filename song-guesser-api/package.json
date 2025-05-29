@@ -26,7 +26,8 @@
     "node-cron": "^3.0.3",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "youtube-sr": "^4.3.11"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"

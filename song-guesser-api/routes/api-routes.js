@@ -22,12 +22,37 @@ router.get('/daily-challenge/songs', (req, res) => {
     const today = getTodayDateString();
     const sql = `
         SELECT id, challenge_date, song_order, source_name, track_id_from_source, 
-               title, artist, preview_url, album_art_url, duration_ms 
+               title, artist, album_art_url, duration_ms, youtube_video_id 
         FROM daily_challenges 
         WHERE challenge_date = ? 
         ORDER BY song_order ASC
     `;
-    db.all(sql, [today], (err, rows) => {
+    // Changed preview_url to youtube_video_id in the SELECT statement.
+
+    // The 'db' variable should be the result of getDb() from database-service
+    const database = db.getDb(); // Assuming your 'db' import provides a getDb() method.
+                               // If 'db' is already the database instance, just use 'db.all'.
+                               // Based on your provided file, it seems `db` is not the instance itself
+                               // but the module, so you'd call `const { getDb } = require('../services/database-service');`
+                               // and then `const database = getDb();` or use `db.getDb().all(...)` directly.
+                               // For consistency with other files, let's assume:
+                               // const { getDb } = require('../services/database-service'); (at the top)
+                               // const currentDb = getDb(); (inside the route or as a module-level var if appropriate)
+                               // currentDb.all(...)
+    
+    // Correcting based on how db is typically used with your structure:
+    // You'd likely have `const { getDb } = require('../services/database-service');` at the top.
+    // Then `const currentDbInstance = getDb();`
+    // So, the call would be `getDb().all(...)` if `db` is the module, or just `db.all` if `db` is already an instance.
+    // The provided snippet uses `db.all` which implies `db` is already an instance.
+    // However, your `database-service.js` exports `getDb`. So, this route file should use `getDb().all`.
+
+    // Assuming `db` refers to the imported module `require('../services/database-service')`
+    // and you have destructured `getDb` from it or call `db.getDb()`
+    
+    const currentDb = require('../services/database-service').getDb(); // Or however you access the db instance
+
+    currentDb.all(sql, [today], (err, rows) => {
         if (err) {
             console.error("Error fetching daily challenge songs:", err.message);
             return res.status(500).json({ error: 'Failed to retrieve daily challenge songs.' });
@@ -35,7 +60,20 @@ router.get('/daily-challenge/songs', (req, res) => {
         if (!rows || rows.length === 0) {
             return res.status(404).json({ message: 'No daily challenge songs available for today. Please try again later.' });
         }
-        res.json(rows);
+        // Ensure the response objects contain youtube_video_id instead of preview_url
+        res.json(rows.map(row => ({
+            id: row.id,
+            challenge_date: row.challenge_date,
+            song_order: row.song_order,
+            source_name: row.source_name,
+            track_id_from_source: row.track_id_from_source,
+            title: row.title,
+            artist: row.artist,
+            album_art_url: row.album_art_url,
+            duration_ms: row.duration_ms,
+            youtube_video_id: row.youtube_video_id // Ensure this is included
+            // preview_url: undefined, // Explicitly remove if it was there before
+        })));
     });
 });
 
