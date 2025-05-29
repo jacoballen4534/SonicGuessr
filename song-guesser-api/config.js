@@ -10,6 +10,7 @@ module.exports = {
     SPOTIFY_CLIENT_SECRET: process.env.SPOTIFY_CLIENT_SECRET,
     SPOTIFY_ACCOUNTS_URL: 'https://accounts.spotify.com/api/token',
     SPOTIFY_API_BASE_URL: 'https://api.spotify.com/v1',
+    SPOTIFY_MARKET: process.env.SPOTIFY_MARKET || 'US',
 
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,

@@ -1,6 +1,6 @@
 Project Plan: Raspberry Pi Song Guesser Game (v3 - Angular Frontend)
 1. Project Overview & Goals
-The goal is to create a web-based "guess the song" game, hosted on a Raspberry Pi. The primary game mode will be a Daily Challenge. Users will listen to short audio snippets (from Spotify previews) and try to guess the song title. The frontend will be built using Angular, and the backend API with Node.js/Express. The game will feature user accounts via Google Sign-In and personalized usernames.
+The goal is to create a web-based "guess the song" game called SonicGuessr, hosted on a Raspberry Pi. The primary game mode will be a Daily Challenge. Users will listen to short audio snippets (from Deezer API previews/extracts) and try to guess the song title. The frontend will be built using Angular, and the backend API with Node.js/Express. The game will feature user accounts via Google Sign-In and personalized usernames.
 
 Key Features:
 

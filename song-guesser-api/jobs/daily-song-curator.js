@@ -1,20 +1,19 @@
 // File: jobs/daily-song-curator.js
 // Description: Scheduled job to fetch and cache daily challenge songs.
 // Changes:
-// - `curateDailySongs` now gets the `db` instance via `getDb()`.
-// - The startup call to `curateDailySongs` inside `startDailyJob` now awaits `dbInitializationPromise`.
+// - Calls `spotifyService.getTracksForDailyChallenge` instead of `getTracksFromPlaylist`.
 
 const cron = require('node-cron');
-const { getDb, dbInitializationPromise } = require('../services/database-service'); // Updated import
-const spotifyService = require('../services/spotify-service');
+const { getDb, dbInitializationPromise } = require('../services/database-service');
+const spotifyService = require('../services/spotify-service'); // This now exports getTracksForDailyChallenge
 const { DAILY_SONG_COUNT } = require('../config');
 
 function getTodayDateString() {
-    return new Date().toISOString().slice(0, 10); // YYYY-MM-DD in UTC
+    return new Date().toISOString().slice(0, 10);
 }
 
 async function curateDailySongs() {
-    const db = getDb(); // Get the initialized db instance
+    const db = getDb();
     console.log(`[${new Date().toISOString()}] Running daily song curation job...`);
     const today = getTodayDateString();
 
@@ -30,22 +29,18 @@ async function curateDailySongs() {
             }
 
             try {
-                const potentialTracks = await spotifyService.getTracksFromPlaylist(undefined, DAILY_SONG_COUNT * 2);
+                // Use the new function to get tracks
+                const tracksForChallenge = await spotifyService.getTracksForDailyChallenge(DAILY_SONG_COUNT);
                 
-                if (!potentialTracks || potentialTracks.length === 0) {
-                    return reject(new Error('No tracks fetched from Spotify.'));
+                if (!tracksForChallenge || tracksForChallenge.length === 0) {
+                    return reject(new Error('No tracks fetched from Spotify for daily challenge.'));
                 }
 
-                const selectedTracks = potentialTracks
-                    .sort(() => 0.5 - Math.random()) // Shuffle
-                    .slice(0, DAILY_SONG_COUNT);
-
-                if (selectedTracks.length < DAILY_SONG_COUNT) {
-                    console.warn(`Could only select ${selectedTracks.length} tracks with previews, less than desired ${DAILY_SONG_COUNT}.`);
+                // If fewer tracks than DAILY_SONG_COUNT were returned, we proceed with what we have.
+                if (tracksForChallenge.length < DAILY_SONG_COUNT) {
+                    console.warn(`Fetched only ${tracksForChallenge.length} tracks, less than the desired ${DAILY_SONG_COUNT}.`);
                 }
-                if (selectedTracks.length === 0) {
-                    return reject(new Error('Zero tracks selected after filtering for daily challenge.'));
-                }
+                // No need to shuffle or slice again if getTracksForDailyChallenge already returns the desired count or fewer.
 
                 const insertStmt = db.prepare(`
                     INSERT INTO daily_challenges 
@@ -55,7 +50,7 @@ async function curateDailySongs() {
 
                 db.serialize(() => {
                     db.run('BEGIN TRANSACTION;', txErr => { if (txErr) return reject(txErr); });
-                    selectedTracks.forEach((track, index) => {
+                    tracksForChallenge.forEach((track, index) => {
                         insertStmt.run(
                             today, index + 1, 'spotify', track.id, track.title,
                             track.artist, track.preview_url, track.album_art_url, track.duration_ms,
@@ -67,16 +62,16 @@ async function curateDailySongs() {
                     insertStmt.finalize(finalizeErr => {
                         if (finalizeErr) {
                              console.error('Finalize statement error:', finalizeErr.message);
-                             db.run('ROLLBACK;');
+                             db.run('ROLLBACK;'); // Attempt rollback
                              return reject(finalizeErr);
                         }
                         db.run('COMMIT;', (commitErr) => {
                             if (commitErr) {
                                 console.error('Transaction commit error:', commitErr.message);
-                                db.run('ROLLBACK;');
+                                db.run('ROLLBACK;'); // Attempt rollback
                                 return reject(commitErr);
                             }
-                            console.log(`Successfully curated and stored ${selectedTracks.length} songs for ${today}.`);
+                            console.log(`Successfully curated and stored ${tracksForChallenge.length} songs for ${today}.`);
                             resolve();
                         });
                     });
@@ -92,11 +87,12 @@ async function curateDailySongs() {
     });
 }
 
+// startDailyJob function remains the same
 function startDailyJob() {
-    cron.schedule('0 1 * * *', async () => { // Runs daily at 1 AM UTC
+    cron.schedule('0 1 * * *', async () => { 
         console.log(`[${new Date().toISOString()}] Cron job triggered for daily song curation.`);
         try {
-            await dbInitializationPromise; // Ensure DB is ready before cron job runs for the first time after a restart
+            await dbInitializationPromise; 
             await curateDailySongs();
         } catch (error) {
             console.error("Daily song curation cron job failed:", error);
@@ -107,10 +103,9 @@ function startDailyJob() {
     });
     console.log('Daily song curation job scheduled for 1:00 AM UTC.');
 
-    // Run once on startup after DB initialization
     (async () => {
         try {
-            await dbInitializationPromise; // Wait for DB to be initialized
+            await dbInitializationPromise; 
             console.log('Database initialized. Attempting initial song curation on startup...');
             await curateDailySongs();
         } catch (error) {
