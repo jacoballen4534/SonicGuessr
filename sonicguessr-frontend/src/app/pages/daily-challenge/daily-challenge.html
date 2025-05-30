@@ -17,6 +17,14 @@
   </div>
 
   <div *ngIf="activeSong">
+
+    <app-guess-input (guessSubmitted)="handleUserGuess($event)"></app-guess-input>
+
+    <div *ngIf="lastGuessResult">
+      <p>{{ lastGuessResult }}</p>
+    </div>
+
+
     <h3>Playing Song #{{ activeSongIndex + 1 }} of {{ dailySongs.length }}</h3>
     <p><strong>Title Hint (Dev only):</strong> {{ activeSong.title }}</p>
     <p><strong>Artist Hint (Dev only):</strong> {{ activeSong.artist }}</p>

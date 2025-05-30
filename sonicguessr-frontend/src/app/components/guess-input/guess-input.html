@@ -1,0 +1,20 @@
+<div class="guess-input-container">
+  <form (ngSubmit)="onSubmitGuess()">
+    <input 
+      type="text" 
+      [(ngModel)]="currentGuess" 
+      (ngModelChange)="onInputChange($event)"
+      name="songGuess"
+      placeholder="Guess the song title..." 
+      aria-label="Song guess input"
+      autocomplete="off"
+    />
+    <button type="submit" [disabled]="!currentGuess.trim()">Submit Guess</button>
+  </form>
+
+  <ul *ngIf="suggestions.length > 0" class="autocomplete-suggestions">
+    <li *ngFor="let suggestion of suggestions" (click)="selectSuggestion(suggestion)">
+      {{ suggestion.title }} - {{ suggestion.artist }}
+    </li>
+  </ul>
+</div>

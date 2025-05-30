@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { ChallengeService } from '../../services/challenge';
 import { DailyChallengeSong } from '../../models/daily-song.model';
 import { AudioPlayer } from '../../components/audio-player/audio-player'; // Assuming this is its class name
+import { GuessInput } from '../../components/guess-input/guess-input'; // Adjust path
 
 const snippetLevelsData = [
   { id: 1, start: 0, end: 0.3, durationText: '0.3 seconds' },  // Level 1
@@ -20,6 +21,7 @@ const snippetLevelsData = [
   imports: [
     CommonModule,
     AudioPlayer,
+    GuessInput,
   ],
   templateUrl: './daily-challenge.html',
   styleUrls: ['./daily-challenge.scss']
@@ -30,6 +32,8 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
   dailySongs: DailyChallengeSong[] = [];
   isLoading = true;
   error: string | null = null;
+
+  lastGuessResult: string = ''; // To display feedback
 
   // Game State for current song and snippet
   activeSong: DailyChallengeSong | null = null;
@@ -85,6 +89,28 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
       this.activeSong = null;
       this.playbackVideoId = null; // Clear playback if song is invalid
     }
+  }
+
+    handleUserGuess(guess: string): void {
+    console.log(`DailyChallengeComponent: Received guess: "<span class="math-inline">\{guess\}" for song\: "</span>{this.activeSong?.title}"`);
+    if (!this.activeSong) return;
+
+    // Normalize guess and title for comparison (optional, but good practice)
+    const normalizedGuess = guess.trim().toLowerCase();
+    const normalizedTitle = this.activeSong.title.trim().toLowerCase();
+
+    if (normalizedGuess === normalizedTitle) {
+      this.lastGuessResult = `Correct! It was ${this.activeSong.title}.`;
+      // TODO: Award points, move to next song or show score
+      alert(`Correct! The song is: ${this.activeSong.title}`); // Simple feedback
+      this.nextSong(); // Move to the next song
+    } else {
+      this.lastGuessResult = `Incorrect. That's not "${this.activeSong.title}". Try another snippet or guess again!`;
+      // TODO: Potentially allow playing next snippet level
+      alert('Incorrect! Try playing the next snippet level.');
+      // this.playNextSnippetLevel(); // Or offer a button for this
+    }
+    // Here you would also call the backend /api/daily-challenge/guess endpoint
   }
 
   playCurrentSnippet(): void {

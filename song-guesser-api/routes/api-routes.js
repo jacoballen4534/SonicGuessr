@@ -90,7 +90,7 @@ router.post('/daily-challenge/guess', isAuthenticated, (req, res) => {
     const today = getTodayDateString();
     const getSongSql = 'SELECT id, title, artist FROM daily_challenges WHERE id = ? AND challenge_date = ?';
     
-    db.get(getSongSql, [daily_challenge_song_id, today], (err, song) => {
+    db.getDb().get(getSongSql, [daily_challenge_song_id, today], (err, song) => {
         if (err) {
             console.error("Error fetching song for guess:", err.message);
             return res.status(500).json({ error: 'Error processing guess.' });
@@ -113,7 +113,7 @@ router.post('/daily-challenge/guess', isAuthenticated, (req, res) => {
             };
             // Store score in DB
             const storeScoreSql = 'INSERT INTO scores (user_id, daily_challenge_id, score, guessed_at_level) VALUES (?, ?, ?, ?)';
-            db.run(storeScoreSql, [userId, song.id, pointsAwarded, currentLevel], (scoreErr) => {
+            db.getDb().run(storeScoreSql, [userId, song.id, pointsAwarded, currentLevel], (scoreErr) => {
                 if (scoreErr) {
                     console.error("Error storing score:", scoreErr.message);
                     // Non-critical for guess response, but log it.
@@ -155,7 +155,7 @@ router.get('/songs/autocomplete', (req, res) => {
         ORDER BY title ASC
         LIMIT 5
     `;
-    db.all(sql, [today, `%${query}%`], (err, rows) => {
+    db.getDb().all(sql, [today, `%${query}%`], (err, rows) => {
         if (err) {
             console.error("Error fetching autocomplete suggestions:", err.message);
             return res.status(500).json({ error: 'Failed to retrieve autocomplete suggestions.' });
@@ -182,7 +182,7 @@ router.get('/leaderboard/daily', (req, res) => {
     `; 
     // You might want to ensure username is not null, or use display_name
 
-    db.all(sql, [today], (err, rows) => {
+    db.getDb().all(sql, [today], (err, rows) => {
         if (err) {
             console.error("Error fetching daily leaderboard:", err.message);
             return res.status(500).json({ error: 'Failed to retrieve daily leaderboard.' });
