@@ -19,6 +19,7 @@ const {
     YOUTUBE_API_KEY,      // Your YouTube Data API v3 Key
     DAILY_SONG_COUNT
 } = require('../config');
+const { getDb } = require('./database-service'); // If this service needs to access db directly
 
 let spotifyAccessToken = null;
 let tokenExpiryTime = 0;
@@ -412,9 +413,56 @@ async function searchTracksOnSpotify(query, limit = 5) {
     }
 }
 
+// New function to save suggestions to cache
+async function saveSuggestionsToCache(suggestions) {
+    if (!suggestions || suggestions.length === 0) {
+        return;
+    }
+    const dbInstance = getDb();
+    const insertSql = `
+        INSERT OR IGNORE INTO song_suggestion_cache (spotify_track_id, title, artist) 
+        VALUES (?, ?, ?)
+    `;
+    // Using a prepared statement for multiple inserts is more efficient
+    const stmt = dbInstance.prepare(insertSql);
+    let insertedCount = 0;
+    suggestions.forEach(suggestion => {
+        // Ensure suggestion has id, title, artist
+        if (suggestion.id && suggestion.title && suggestion.artist) {
+            stmt.run(suggestion.id, suggestion.title, suggestion.artist, function(err) {
+                if (err) {
+                    console.error("Error inserting suggestion to cache:", err.message, suggestion);
+                } else if (this.changes > 0) {
+                    insertedCount++;
+                }
+            });
+        }
+    });
+    // Finalize the statement after all run calls have been made.
+    // The run calls are asynchronous in their callbacks.
+    // For bulk inserts, it's often better to wrap in a transaction if not already.
+    // However, for autocomplete cache, individual failures are less critical.
+    return new Promise((resolve, reject) => {
+        stmt.finalize(err => {
+            if (err) {
+                console.error("Error finalizing statement for cache insertion:", err.message);
+                reject(err); // Or just log and resolve
+            } else {
+                if (insertedCount > 0) {
+                    console.log(`[Cache] Saved ${insertedCount} new suggestions to cache.`);
+                }
+                resolve();
+            }
+        });
+    });
+}
+
+
+
 
 module.exports = {
     getAccessToken,
     getTracksForDailyChallenge,
-    searchTracksOnSpotify // Add the new function here
+    searchTracksOnSpotify,
+    saveSuggestionsToCache // Export the new function
 };

@@ -145,26 +145,76 @@ router.post('/daily-challenge/guess', isAuthenticated, (req, res) => {
 // GET /api/songs/autocomplete
 router.get('/songs/autocomplete', async (req, res) => {
     const { query } = req.query;
+    const desiredLimit = 7; // How many suggestions we ideally want
 
-    // Frontend already debounces and checks min length, but good to have a server check too.
-    if (!query || query.trim().length < 2) { 
+    if (!query || query.trim().length < 2) {
         return res.status(400).json({ error: 'Query parameter is required and must be at least 2 characters.' });
     }
 
-    try {
-        // Call the new function from your music source service
-        const suggestions = await musicSourceService.searchTracksOnSpotify(query.trim(), 7); // Fetch 7 suggestions for example
-        
-        // The suggestions from searchTracksOnSpotify are already in the format:
-        // { id, title, artist }
-        // which matches what your frontend GuessInputComponent expects.
-        res.json(suggestions);
+    const searchTerm = query.trim();
+    const dbInstance = db.getDb()
 
-    } catch (error) { 
-        // searchTracksOnSpotify is now set to return [] on error, but if it were to throw:
-        console.error("[API Route] Error fetching autocomplete suggestions from Spotify service:", error.message);
-        res.status(500).json({ error: 'Failed to retrieve autocomplete suggestions.' });
-    }
+    // 1. Try searching the local cache
+    const localSql = `
+        SELECT spotify_track_id as id, title, artist 
+        FROM song_suggestion_cache 
+        WHERE title LIKE ? OR artist LIKE ? 
+        ORDER BY title ASC 
+        LIMIT ?
+    `;
+    const likeQuery = `%${searchTerm}%`;
+
+    dbInstance.all(localSql, [likeQuery, likeQuery, desiredLimit], async (err, localRows) => {
+        if (err) {
+            console.error("[Cache Search] Error fetching autocomplete suggestions from local cache:", err.message);
+            // Don't fail here, proceed to Spotify search as a fallback
+        }
+
+        if (localRows && localRows.length >= desiredLimit) {
+            console.log(`[Cache Search] Found ${localRows.length} suggestions in cache for query "${searchTerm}".`);
+            return res.json(localRows);
+        }
+
+        // 2. If not enough results from cache, fetch from Spotify
+        let combinedResults = localRows || [];
+        const remainingNeeded = desiredLimit - combinedResults.length;
+        
+        console.log(`[Cache Search] Found ${combinedResults.length} in cache. Need ${remainingNeeded > 0 ? remainingNeeded : 0} more. Fetching from Spotify for query "${searchTerm}".`);
+
+        try {
+            const spotifySuggestions = await musicSourceService.searchTracksOnSpotify(searchTerm, desiredLimit); // Fetch a good number
+
+            if (spotifySuggestions && spotifySuggestions.length > 0) {
+                // Add new Spotify suggestions to combinedResults, avoiding duplicates based on id
+                const existingIds = new Set(combinedResults.map(r => r.id));
+                const newUniqueSuggestions = spotifySuggestions.filter(s => !existingIds.has(s.id));
+                
+                combinedResults = combinedResults.concat(newUniqueSuggestions);
+                
+                // Trim to desiredLimit if we have too many now
+                combinedResults = combinedResults.slice(0, desiredLimit);
+
+                // Asynchronously save new Spotify suggestions to cache (don't wait for this to respond to user)
+                if (newUniqueSuggestions.length > 0) {
+                     musicSourceService.saveSuggestionsToCache(newUniqueSuggestions)
+                        .then(() => console.log(`[Cache Save] Cache update initiated for ${newUniqueSuggestions.length} items from Spotify.`))
+                        .catch(cacheErr => console.error("[Cache Save] Error saving Spotify suggestions to cache:", cacheErr.message));
+                }
+            }
+            
+            console.log(`[Spotify Search] Returning ${combinedResults.length} combined suggestions for query "${searchTerm}".`);
+            res.json(combinedResults);
+
+        } catch (spotifyErr) {
+            console.error("[Spotify Search] Error fetching autocomplete suggestions from Spotify service:", spotifyErr.message);
+            // If Spotify fails, and we had some local results, return those. Otherwise, error.
+            if (combinedResults.length > 0) {
+                console.log(`[Spotify Search Failed] Returning ${combinedResults.length} cached suggestions for query "${searchTerm}".`);
+                return res.json(combinedResults);
+            }
+            res.status(500).json({ error: 'Failed to retrieve autocomplete suggestions.' });
+        }
+    });
 });
 
 // GET /api/leaderboard/daily

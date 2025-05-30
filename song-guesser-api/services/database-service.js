@@ -73,6 +73,26 @@ function initializeDatabase() {
             );
         `;
 
+                // New table for caching song suggestions
+        const createSongSuggestionCacheTable = `
+            CREATE TABLE IF NOT EXISTS song_suggestion_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                spotify_track_id TEXT UNIQUE NOT NULL, -- To prevent duplicates
+                title TEXT NOT NULL,
+                artist TEXT NOT NULL,
+                -- album_art_url TEXT, -- Optional: if you want to cache this too
+                fetched_at TEXT DEFAULT (datetime('now'))
+            );
+        `;
+        // Index for faster searching on title (and potentially artist later)
+        const createSuggestionTitleIndex = `
+            CREATE INDEX IF NOT EXISTS idx_suggestion_title ON song_suggestion_cache (title);
+        `;
+         const createSuggestionArtistIndex = `
+            CREATE INDEX IF NOT EXISTS idx_suggestion_artist ON song_suggestion_cache (artist);
+        `;
+
+
         db.serialize(() => {
             const promises = [];
             promises.push(new Promise((res, rej) => db.run(createUsersTable, err => {
@@ -90,6 +110,20 @@ function initializeDatabase() {
             promises.push(new Promise((res, rej) => db.run(createSessionsTable, err => {
                 if (err) { console.error("Error creating sessions table:", err.message); return rej(err); }
                 console.log("Sessions table checked/created."); res();
+            })));
+
+                        // Add creation for the new table and its index
+            promises.push(new Promise((res, rej) => db.run(createSongSuggestionCacheTable, err => {
+                if (err) { console.error("Error creating song_suggestion_cache table:", err.message); return rej(err); }
+                console.log("Song suggestion cache table checked/created."); res();
+            })));
+            promises.push(new Promise((res, rej) => db.run(createSuggestionTitleIndex, err => {
+                if (err) { console.error("Error creating idx_suggestion_title index:", err.message); return rej(err); }
+                console.log("idx_suggestion_title index checked/created."); res();
+            })));
+            promises.push(new Promise((res, rej) => db.run(createSuggestionArtistIndex, err => {
+                if (err) { console.error("Error creating idx_suggestion_artist index:", err.message); return rej(err); }
+                console.log("idx_suggestion_artist index checked/created."); res();
             })));
 
             Promise.all(promises).then(resolve).catch(reject);
