@@ -18,13 +18,6 @@
 
   <div *ngIf="activeSong">
 
-    <app-guess-input (guessSubmitted)="handleUserGuess($event)"></app-guess-input>
-
-    <div *ngIf="lastGuessResult">
-      <p>{{ lastGuessResult }}</p>
-    </div>
-
-
     <h3>Playing Song #{{ activeSongIndex + 1 }} of {{ dailySongs.length }}</h3>
     <p><strong>Title Hint (Dev only):</strong> {{ activeSong.title }}</p>
     <p><strong>Artist Hint (Dev only):</strong> {{ activeSong.artist }}</p>
@@ -32,13 +25,27 @@
     
     <p>Current Snippet Level: {{ SNIPPET_LEVELS[currentSnippetLevelIndex].durationText || 'N/A' }}</p>
 
-    <button (click)="playCurrentSnippet()">Play Current Snippet</button>
-    
-    <button (click)="playNextSnippetLevel()" 
-            [disabled]="currentSnippetLevelIndex >= SNIPPET_LEVELS.length - 1">
-      Play Next Snippet Level (if available)
+    <app-guess-input (guessSubmitted)="handleUserGuess($event)"></app-guess-input>
+
+    <div *ngIf="feedbackMessage" 
+          class="feedback-container"
+         [ngClass]="{'feedback-correct': isGuessCorrect, 'feedback-incorrect': !isGuessCorrect}">
+      <p>{{ feedbackMessage }}</p>
+      <p *ngIf="pointsScoredThisGuess > 0">You scored: {{ pointsScoredThisGuess }} points!</p>
+    </div>
+
+    <button *ngIf="isGuessCorrect === false && activeSong && currentSnippetLevelIndex < SNIPPET_LEVELS.length - 1" 
+            (click)="playNextSnippetLevel()">
+      Try Next Snippet ({{ SNIPPET_LEVELS[currentSnippetLevelIndex + 1].durationText }})
     </button>
-    
+
+    <div *ngIf="lastGuessResult">
+      <p>{{ lastGuessResult }}</p>
+    </div>
+
+
+    <button (click)="playCurrentSnippet()">Play Current Snippet</button>
+        
     <button (click)="nextSong()" 
             [disabled]="activeSongIndex >= dailySongs.length - 1">
       Next Song (DEV - skip)

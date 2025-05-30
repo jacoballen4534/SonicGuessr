@@ -1,7 +1,7 @@
 // src/app/pages/daily-challenge/daily-challenge.ts
 import { Component, OnInit, inject, ViewChild, AfterViewInit } from '@angular/core'; // Added ViewChild, AfterViewInit
 import { CommonModule } from '@angular/common';
-import { ChallengeService } from '../../services/challenge';
+import { ChallengeService, GuessPayload, GuessResponse } from '../../services/challenge';
 import { DailyChallengeSong } from '../../models/daily-song.model';
 import { AudioPlayer } from '../../components/audio-player/audio-player'; // Assuming this is its class name
 import { GuessInput } from '../../components/guess-input/guess-input'; // Adjust path
@@ -34,6 +34,9 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
   error: string | null = null;
 
   lastGuessResult: string = ''; // To display feedback
+  feedbackMessage: string = ''; // More structured feedback
+  isGuessCorrect: boolean | null = null;
+  pointsScoredThisGuess: number = 0;
 
   // Game State for current song and snippet
   activeSong: DailyChallengeSong | null = null;
@@ -91,26 +94,67 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
     }
   }
 
-    handleUserGuess(guess: string): void {
-    console.log(`DailyChallengeComponent: Received guess: "<span class="math-inline">\{guess\}" for song\: "</span>{this.activeSong?.title}"`);
-    if (!this.activeSong) return;
-
-    // Normalize guess and title for comparison (optional, but good practice)
-    const normalizedGuess = guess.trim().toLowerCase();
-    const normalizedTitle = this.activeSong.title.trim().toLowerCase();
-
-    if (normalizedGuess === normalizedTitle) {
-      this.lastGuessResult = `Correct! It was ${this.activeSong.title}.`;
-      // TODO: Award points, move to next song or show score
-      alert(`Correct! The song is: ${this.activeSong.title}`); // Simple feedback
-      this.nextSong(); // Move to the next song
-    } else {
-      this.lastGuessResult = `Incorrect. That's not "${this.activeSong.title}". Try another snippet or guess again!`;
-      // TODO: Potentially allow playing next snippet level
-      alert('Incorrect! Try playing the next snippet level.');
-      // this.playNextSnippetLevel(); // Or offer a button for this
+  handleUserGuess(guess: string): void {
+    if (!this.activeSong) {
+      console.error("No active song to guess against.");
+      this.feedbackMessage = "Error: No active song selected.";
+      return;
     }
-    // Here you would also call the backend /api/daily-challenge/guess endpoint
+
+    console.log(`DailyChallengeComponent: Received guess: "<span class="math-inline">\{guess\}" for song\: "</span>{this.activeSong.title}" at level ${this.currentSnippetLevelIndex}`);
+    this.feedbackMessage = ''; // Clear previous feedback
+    this.isGuessCorrect = null;
+    this.pointsScoredThisGuess = 0;
+
+    const payload: GuessPayload = {
+      daily_challenge_song_id: this.activeSong.id, // Ensure your DailyChallengeSong interface has the 'id' from the DB
+      guess: guess,
+      currentLevel: this.currentSnippetLevelIndex + 1 // Backend might expect 1-based level
+    };
+
+    this.challengeService.submitGuess(payload).subscribe({
+      next: (response: GuessResponse) => {
+        console.log('Guess response from backend:', response);
+        this.feedbackMessage = response.message;
+
+        if (response.correct) {
+          this.isGuessCorrect = true;
+          this.pointsScoredThisGuess = response.pointsAwarded || 0;
+          // TODO: Update total score
+          alert(`Correct! ${response.message} You scored ${response.pointsAwarded} points.`);
+          // Optionally, wait a bit before moving to the next song to show feedback
+          setTimeout(() => {
+            this.nextSong();
+          }, 2000); // Move to next song after 2 seconds
+        } else {
+          this.isGuessCorrect = false;
+          if (response.gameOverForSong) {
+            // TODO: Show correct answer (response.songTitle, response.artist)
+            alert(`Incorrect. Game over for this song. The song was: ${response.songTitle} by ${response.artist}.`);
+            // Optionally, wait a bit
+            setTimeout(() => {
+              this.nextSong();
+            }, 3000);
+          } else if (response.nextLevel) {
+            // The backend implies a nextLevel, but our snippet levels are client-driven by SNIPPET_LEVELS.
+            // We can use this to decide if we should offer to play the next snippet level.
+            // Or, the backend's currentLevel could be the number of attempts.
+            // For now, let's allow playing next snippet if available.
+            alert(`Incorrect. ${response.message}`);
+            // We can enable a "Play Next Snippet" button or automatically play it if desired.
+            // The `playNextSnippetLevel()` method already handles checking bounds.
+          }
+        }
+      },
+      error: (err) => {
+        console.error('Error submitting guess:', err);
+        this.feedbackMessage = err.error?.message || 'Failed to submit guess. Please check your connection or try again.';
+         if (err.status === 401) { // Unauthorized
+            this.feedbackMessage = "You need to be logged in to submit a guess. Please log in.";
+            // TODO: Redirect to login or show login prompt
+        }
+      }
+    });
   }
 
   playCurrentSnippet(): void {

@@ -1,0 +1,43 @@
+// src/app/pages/daily-challenge/daily-challenge.scss
+
+// Styles for the feedback messages
+.feedback-correct {
+  color: green;
+  font-weight: bold;
+  padding: 10px;
+  margin-top: 10px;
+  border: 1px solid green;
+  background-color: #e6ffe6; // Light green background
+  border-radius: 4px;
+}
+
+.feedback-incorrect {
+  color: red;
+  font-weight: bold;
+  padding: 10px;
+  margin-top: 10px;
+  border: 1px solid red;
+  background-color: #ffe6e6; // Light red background
+  border-radius: 4px;
+}
+
+// You might want a general style for the feedback container too
+.feedback-container { // If you wrap the feedback <p> in a div with this class
+  margin-top: 15px;
+  padding: 10px;
+  border-radius: 5px;
+  text-align: center;
+
+  p {
+    margin-bottom: 5px;
+  }
+}
+
+// Example usage in your daily-challenge.html (as a reminder):
+/*
+<div *ngIf="feedbackMessage"
+     class="feedback-container" [ngClass]="{'feedback-correct': isGuessCorrect === true, 'feedback-incorrect': isGuessCorrect === false}">
+  <p>{{ feedbackMessage }}</p>
+  <p *ngIf="pointsScoredThisGuess > 0">You scored: {{ pointsScoredThisGuess }} points!</p>
+</div>
+*/
