@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../services/database-service');
 const { DAILY_SONG_COUNT } = require('../config'); // For max levels in guess
+const musicSourceService = require('../services/music-source-service');
 
 function getTodayDateString() {
     return new Date().toISOString().slice(0, 10);
@@ -142,28 +143,29 @@ router.post('/daily-challenge/guess', isAuthenticated, (req, res) => {
 
 
 // GET /api/songs/autocomplete
-router.get('/songs/autocomplete', (req, res) => {
+router.get('/songs/autocomplete', async (req, res) => {
     const { query } = req.query;
-    const today = getTodayDateString();
 
-    if (!query) return res.status(400).json({ error: 'Query parameter is required.' });
+    // Frontend already debounces and checks min length, but good to have a server check too.
+    if (!query || query.trim().length < 2) { 
+        return res.status(400).json({ error: 'Query parameter is required and must be at least 2 characters.' });
+    }
 
-    const sql = `
-        SELECT title, artist, track_id_from_source 
-        FROM daily_challenges 
-        WHERE challenge_date = ? AND title LIKE ?
-        ORDER BY title ASC
-        LIMIT 5
-    `;
-    db.getDb().all(sql, [today, `%${query}%`], (err, rows) => {
-        if (err) {
-            console.error("Error fetching autocomplete suggestions:", err.message);
-            return res.status(500).json({ error: 'Failed to retrieve autocomplete suggestions.' });
-        }
-        res.json(rows.map(row => ({ title: row.title, artist: row.artist, id: row.track_id_from_source })));
-    });
+    try {
+        // Call the new function from your music source service
+        const suggestions = await musicSourceService.searchTracksOnSpotify(query.trim(), 7); // Fetch 7 suggestions for example
+        
+        // The suggestions from searchTracksOnSpotify are already in the format:
+        // { id, title, artist }
+        // which matches what your frontend GuessInputComponent expects.
+        res.json(suggestions);
+
+    } catch (error) { 
+        // searchTracksOnSpotify is now set to return [] on error, but if it were to throw:
+        console.error("[API Route] Error fetching autocomplete suggestions from Spotify service:", error.message);
+        res.status(500).json({ error: 'Failed to retrieve autocomplete suggestions.' });
+    }
 });
-
 
 // GET /api/leaderboard/daily
 // This route can be public or protected

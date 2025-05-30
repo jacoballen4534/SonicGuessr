@@ -364,7 +364,57 @@ async function getTracksForDailyChallenge(desiredTrackCount = DAILY_SONG_COUNT) 
     return tracksForChallenge.slice(0, desiredTrackCount); // Ensure correct count is returned
 }
 
+async function searchTracksOnSpotify(query, limit = 5) {
+    const token = await getAccessToken(); // Uses your existing getAccessToken function
+    if (!token) {
+        console.error('Spotify search failed: Missing access token.');
+        throw new Error('Missing Spotify access token for search.');
+    }
+
+    // Ensure SPOTIFY_API_BASE_URL from your config is the correct live Spotify API URL
+    // e.g., https://api.spotify.com/v1
+    const spotifySearchUrl = `${SPOTIFY_API_BASE_URL}/search`;
+
+    try {
+        console.log(`[Spotify Search] Searching for query: "${query}" at URL: ${spotifySearchUrl}`);
+        const response = await axios.get(spotifySearchUrl, {
+            headers: { 'Authorization': `Bearer ${token}` },
+            params: {
+                q: query,
+                type: 'track',
+                market: SPOTIFY_MARKET, // From your config.js
+                limit: limit
+            }
+        });
+
+        if (response.data && response.data.tracks && response.data.tracks.items) {
+            return response.data.tracks.items.map(track => ({
+                id: track.id, // Spotify track ID
+                title: track.name,
+                artist: track.artists.map(artist => artist.name).join(', '),
+                // You could include album_art_url if your frontend autocomplete can show it:
+                // album_art_url: track.album && track.album.images && track.album.images.length > 0 ? track.album.images[0].url : null,
+            }));
+        }
+        return []; // Return empty array if no tracks found or unexpected structure
+    } catch (error) {
+        const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
+        console.error(`[Spotify Search] Error searching tracks on Spotify for query "${query}": ${errorMsg}`);
+        
+        // Invalidate token if it's an auth error, so next call to getAccessToken tries to refresh
+        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+            spotifyAccessToken = null; 
+        }
+        // Re-throw the error so the route handler can send a 500, or return empty array.
+        // For autocomplete, often better to return [] on error than break the UI.
+        // Let's return empty for robustness in autocomplete.
+        return []; 
+    }
+}
+
+
 module.exports = {
-    getAccessToken, // Keep if used by other services, though not directly by this file's main export
-    getTracksForDailyChallenge
+    getAccessToken,
+    getTracksForDailyChallenge,
+    searchTracksOnSpotify // Add the new function here
 };
