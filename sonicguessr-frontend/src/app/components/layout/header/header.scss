@@ -144,3 +144,76 @@
     }
   }
 }
+
+
+// Placeholder variables - REPLACE THESE with your sprite's actual dimensions
+$sonic-frame-width: 25px;   // <<<< Replace with width of ONE frame
+$sonic-frame-height: 32px;  // <<<< Replace with height of ONE frame
+$sonic-spin-frames: 4;      // <<<< Replace with an EVEN number of frames in your spin sequence for smoother loop
+$sonic-sprite-sheet-width: $sonic-frame-width * $sonic-spin-frames; // Total width of the sprite sheet image
+
+.sonic-animation-container {
+  position: absolute; // Position relative to the .app-header
+  bottom: 0;          // Run along the bottom of the header
+  left: 0;
+  width: 100%;
+  height: $sonic-frame-height + 5px; // Height for Sonic + a little breathing room
+  overflow: hidden; // Keep Sonic contained within this strip if header has padding
+  pointer-events: none; // So Sonic doesn't block clicks on header elements
+}
+
+.sonic-sprite {
+  width: $sonic-frame-width;
+  height: $sonic-frame-height;
+  background-image: url('../../../../assets/images/sonic-spin-sprite.png'); // <<<< Ensure this path is correct
+  background-repeat: no-repeat;
+  position: absolute;
+  bottom: 2px; // Small offset from the bottom of the container
+
+  // Two animations: one for spinning frames, one for movement and turning
+  animation: 
+    sonic-spin-frames 1s steps($sonic-spin-frames) infinite, // 0.6s for one full spin cycle of X frames
+    sonic-move-and-turn 20s linear infinite; // 10 seconds for a full round trip (L-R, R-L)
+}
+
+// Keyframes for cycling through the sprite sheet frames
+@keyframes sonic-spin-frames {
+  from { background-position: 0 0; }
+  to { background-position: -$sonic-sprite-sheet-width 0; } 
+  // Moves background from start to end of the sprite sheet row
+}
+
+// Keyframes for movement across screen, flipping, and returning
+@keyframes sonic-move-and-turn {
+  0% { // Start off-screen left, facing right
+    left: -$sonic-frame-width * 2; // Start further off-screen
+    transform: scaleX(1);
+  }
+  45% { // Move to the far right edge, still facing right
+    left: calc(100% + #{$sonic-frame-width}); // Move fully off-screen to the right
+    transform: scaleX(1);
+  }
+  // Pause briefly off-screen right and flip
+  49.9% { 
+    left: calc(100% + #{$sonic-frame-width}); // Stay off-screen right
+    transform: scaleX(1); // Still facing right before flip
+  }
+  50% { // Flipped, ready to return
+    left: calc(100% + #{$sonic-frame-width}); // Still off-screen right
+    transform: scaleX(-1); // Flip to face left
+  }
+  // Move back to far left edge, facing left
+  95% {
+    left: -$sonic-frame-width * 2; // Move fully off-screen to the left
+    transform: scaleX(-1);
+  }
+  // Pause briefly off-screen left and flip for next cycle
+  99.9% {
+    left: -$sonic-frame-width * 2; // Stay off-screen left
+    transform: scaleX(-1); // Still facing left before flip
+  }
+  100% { // Flipped, ready for next cycle L-R
+    left: -$sonic-frame-width * 2; // Reset to start
+    transform: scaleX(1);
+  }
+}
