@@ -60,8 +60,8 @@ export class ChallengeService {
 
     // New method to fetch daily leaderboard
   getDailyLeaderboard(): Observable<LeaderboardResponse> {
-    return this.http.get<LeaderboardResponse>(this.leaderboardApiUrl);
-    // Note: This endpoint on your backend is public/doesn't require authentication in the provided api-routes.js
-    // If it did require auth, you'd add { withCredentials: true }
+    return this.http.get<LeaderboardResponse>(this.leaderboardApiUrl, {
+      withCredentials: true // <<< ENSURE THIS OPTION IS PRESENT AND TRUE
+    });
   }
 }
