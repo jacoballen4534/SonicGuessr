@@ -1,19 +1,14 @@
 <div class="leaderboard-container">
   <h2>Today's Leaderboard</h2>
 
-  <div *ngIf="isLoading">
-    <p>Loading leaderboard...</p>
-  </div>
+  <div *ngIf="isLoading"><p>Loading leaderboard...</p></div>
+  <div *ngIf="error"><p style="color: red;">{{ error }}</p></div>
 
-  <div *ngIf="error">
-    <p style="color: red;">{{ error }}</p>
-  </div>
-
-  <div *ngIf="!isLoading && !error && leaderboardEntries.length === 0">
+  <div *ngIf="!isLoading && !error && topEntries.length === 0 && !currentUserEntry">
     <p>The leaderboard is empty. Be the first to set a score!</p>
   </div>
 
-  <table *ngIf="!isLoading && !error && leaderboardEntries.length > 0">
+  <table *ngIf="!isLoading && !error && (topEntries.length > 0 || currentUserEntry)">
     <thead>
       <tr>
         <th>Rank</th>
@@ -22,11 +17,28 @@
       </tr>
     </thead>
     <tbody>
-      <tr *ngFor="let entry of leaderboardEntries; let i = index">
-        <td>{{ i + 1 }}</td>
+      <tr *ngFor="let entry of topEntries" 
+          [ngClass]="{'highlight-user': isCurrentUser(entry.user_id)}">
+        <td>{{ entry.rank }}</td>
         <td>{{ getPlayerDisplayName(entry) }}</td>
         <td>{{ entry.total_score }}</td>
       </tr>
+
+      <ng-container *ngIf="currentUserEntry && !isCurrentUserInTopTen() && currentUserEntry.rank > 10">
+        <tr class="separator-row"><td colspan="3">...</td></tr>
+        <tr class="highlight-user">
+          <td>{{ currentUserEntry.rank }}</td>
+          <td>{{ getPlayerDisplayName(currentUserEntry) }} (You)</td>
+          <td>{{ currentUserEntry.total_score }}</td>
+        </tr>
+      </ng-container>
     </tbody>
   </table>
+
+  <div *ngIf="!isLoading && !error && currentUserEntry && currentUserEntry.rank > 10 && isCurrentUserInTopTen()">
+    </div>
+  <div *ngIf="!isLoading && !error && loggedInUser && !currentUserEntry">
+     <p>You haven't played today yet!</p>
+  </div>
+
 </div>

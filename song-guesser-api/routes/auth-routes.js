@@ -32,8 +32,14 @@ router.get('/google/callback',
 // Get current user profile (if authenticated)
 router.get('/profile', (req, res) => {
     if (req.isAuthenticated()) {
-        // Exclude sensitive info if necessary before sending
-        const { google_id, ...userProfile } = req.user;
+        const userProfile = {
+            id: req.user.id, // <<< MAKE SURE THIS IS THE DATABASE USER ID
+            username: req.user.username,
+            display_name: req.user.display_name,
+            email: req.user.email,
+            profile_image_url: req.user.profile_image_url
+            // Add any other fields from req.user that are safe and needed
+        };
         res.json({ user: userProfile });
     } else {
         res.status(401).json({ message: 'Not authenticated' });

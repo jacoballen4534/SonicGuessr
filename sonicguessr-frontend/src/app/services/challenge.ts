@@ -25,9 +25,16 @@ export interface GuessResponse {
 
 // Add interface for Leaderboard Entry
 export interface LeaderboardEntry {
-  username: string | null; // Username might be null if user hasn't set one
-  display_name: string;    // Google display name as fallback
+  user_id: number; // From u.id
+  username: string | null;
+  display_name: string;
   total_score: number;
+  rank: number; // From RANK()
+}
+
+export interface LeaderboardResponse {
+  topEntries: LeaderboardEntry[];
+  currentUserEntry: LeaderboardEntry | null;
 }
 
 @Injectable({
@@ -52,8 +59,8 @@ export class ChallengeService {
   }
 
     // New method to fetch daily leaderboard
-  getDailyLeaderboard(): Observable<LeaderboardEntry[]> {
-    return this.http.get<LeaderboardEntry[]>(this.leaderboardApiUrl);
+  getDailyLeaderboard(): Observable<LeaderboardResponse> {
+    return this.http.get<LeaderboardResponse>(this.leaderboardApiUrl);
     // Note: This endpoint on your backend is public/doesn't require authentication in the provided api-routes.js
     // If it did require auth, you'd add { withCredentials: true }
   }

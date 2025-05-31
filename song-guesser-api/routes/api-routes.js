@@ -300,31 +300,62 @@ router.get('/songs/autocomplete', async (req, res) => {
     });
 });
 
-// GET /api/leaderboard/daily
-// This route can be public or protected
-router.get('/leaderboard/daily', (req, res) => {
+router.get('/leaderboard/daily', async (req, res) => {
     const today = getTodayDateString();
-    // Sum scores for each user for today's challenges
-    const sql = `
-        SELECT u.username, u.display_name, SUM(s.score) as total_score
+    const dbInstance = db.getDb();
+    let currentUserEntry = null;
+
+    // SQL to get all ranked scores for today
+    const allRankedScoresSql = `
+        SELECT 
+            u.id as user_id, 
+            u.username, 
+            u.display_name, 
+            SUM(s.score) as total_score,
+            RANK() OVER (ORDER BY SUM(s.score) DESC) as rank
         FROM scores s
         JOIN users u ON s.user_id = u.id
         JOIN daily_challenges dc ON s.daily_challenge_id = dc.id
         WHERE dc.challenge_date = ?
         GROUP BY s.user_id
-        ORDER BY total_score DESC
-        LIMIT 10 
-    `; 
-    // You might want to ensure username is not null, or use display_name
+        ORDER BY rank ASC, u.username ASC; 
+    `;
+    // Added user_id, rank, and order by rank then username for tie-breaking consistency
 
-    db.getDb().all(sql, [today], (err, rows) => {
-        if (err) {
-            console.error("Error fetching daily leaderboard:", err.message);
-            return res.status(500).json({ error: 'Failed to retrieve daily leaderboard.' });
+    try {
+        // Fetch all ranked scores for today
+        const allEntries = await new Promise((resolve, reject) => {
+            dbInstance.all(allRankedScoresSql, [today], (err, rows) => {
+                if (err) return reject(err);
+                resolve(rows);
+            });
+        });
+
+        // Get top 10 entries
+        const topEntries = allEntries.slice(0, 10);
+
+        // If user is authenticated, find their entry
+        if (req.isAuthenticated() && req.user) {
+            const currentUserId = req.user.id;
+            currentUserEntry = allEntries.find(entry => entry.user_id === currentUserId) || null;
+            if (currentUserEntry) {
+                console.log(`[Leaderboard] Current user (ID: ${currentUserId}) found in ranks: Rank ${currentUserEntry.rank}, Score ${currentUserEntry.total_score}`);
+            } else {
+                 console.log(`[Leaderboard] Current user (ID: ${currentUserId}) not found in today's scores.`);
+                 // Optionally, you could fetch their score even if it's 0 or they haven't played,
+                 // but for now, if they aren't in allEntries, they have no score for today.
+            }
         }
-        res.json(rows);
-    });
-});
+        
+        res.json({
+            topEntries: topEntries,
+            currentUserEntry: currentUserEntry 
+        });
 
+    } catch (err) {
+        console.error("Error fetching daily leaderboard:", err.message);
+        return res.status(500).json({ error: 'Failed to retrieve daily leaderboard.' });
+    }
+});
 
 module.exports = router;

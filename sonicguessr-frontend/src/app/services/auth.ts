@@ -6,8 +6,9 @@ import { environment } from '../../environments/environment'; // For backend bas
 
 // Define a User interface (you can expand this based on what /auth/profile returns)
 export interface User {
-  username?: string; // Add username
-  display_name: string; // This is from Google initially
+  id: number; // <<< Ensure this is here
+  username?: string;
+  display_name: string;
   email?: string;
   profile_image_url?: string;
 }
