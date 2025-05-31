@@ -5,17 +5,18 @@
       <li><a routerLink="/" routerLinkActive="active-link" [routerLinkActiveOptions]="{exact: true}">Home</a></li>
       <li><a routerLink="/daily-challenge" routerLinkActive="active-link">Daily Challenge</a></li>
       <li><a routerLink="/leaderboard" routerLinkActive="active-link">Leaderboard</a></li>
-
+      
       <li *ngIf="!(isAuthenticated$ | async)">
         <button (click)="login()">Login with Google</button>
       </li>
       <li *ngIf="(isAuthenticated$ | async) && (currentUser$ | async) as user">
-        <span>Welcome, {{ user.display_name }}!</span>
-        <button (click)="logout()">Logout</button>
+        <span>Welcome, {{ user.username || user.display_name }}!</span>
+        <img *ngIf="user.profile_image_url" [src]="user.profile_image_url" alt="Profile" style="width: 30px; height: 30px; border-radius: 50%;">
+        <a routerLink="/profile/edit" routerLinkActive="active-link">Edit Profile</a> <button (click)="logout()">Logout</button>
       </li>
     </ul>
   </nav>
-  </header>
+</header>
 
 <main>
   <router-outlet></router-outlet>
