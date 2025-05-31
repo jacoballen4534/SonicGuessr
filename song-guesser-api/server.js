@@ -7,14 +7,14 @@
 // - Passer `getDb()` to auth-service for passport strategy.
 
 const express = require('express');
-const path = require('path');
+const path = require('path'); // Ensure path is required
 const cors = require('cors');
 const session = require('express-session');
 const passport = require('passport');
 const SQLiteStore = require('connect-sqlite3')(session);
 
-const { PORT, FRONTEND_URL, SESSION_SECRET, DATABASE_FILE } = require('./config');
-const { dbInitializationPromise, getDb } = require('./services/database-service'); // Updated import
+const { PORT, FRONTEND_URL, SESSION_SECRET, SESSION_DATABASE_FILE } = require('./config');
+const { dbInitializationPromise, getDb } = require('./services/database-service');
 const { initializePassport } = require('./services/auth-service');
 const authRoutes = require('./routes/auth-routes');
 const apiRoutes = require('./routes/api-routes');
@@ -37,8 +37,8 @@ async function main() {
 
     app.use(session({
         store: new SQLiteStore({
-            db: DATABASE_FILE.split('/').pop(),
-            dir: path.dirname(DATABASE_FILE) || '.', // Ensure directory exists or is cwd
+            db: SESSION_DATABASE_FILE.split('/').pop(),
+            dir: path.dirname(SESSION_DATABASE_FILE) || '.', // Ensure directory exists or is cwd
             table: 'sessions',
             concurrentDB: true // Recommended for connect-sqlite3
         }),
@@ -68,7 +68,6 @@ async function main() {
     //     next(); // Important to call next() if not handled
     //   }
     // });
-
 
     app.use((err, req, res, next) => {
         console.error("Unhandled error:", err);

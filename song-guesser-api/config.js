@@ -4,6 +4,7 @@ require('dotenv').config();
 module.exports = {
     PORT: process.env.PORT || 3000,
     DATABASE_FILE: process.env.DATABASE_FILE || './song_guesser.sqlite',
+    SESSION_DATABASE_FILE: process.env.SESSION_DATABASE_FILE || './sessions.sqlite',
     DAILY_SONG_COUNT: parseInt(process.env.DAILY_SONG_COUNT, 10) || 10,
 
     SPOTIFY_CLIENT_ID: process.env.SPOTIFY_CLIENT_ID,

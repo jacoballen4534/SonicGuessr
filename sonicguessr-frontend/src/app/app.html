@@ -2,18 +2,25 @@
   <h1>SonicGuessr</h1>
   <nav>
     <ul>
-      <li><a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">Home</a></li>
-      <li><a routerLink="/daily-challenge" routerLinkActive="active">Daily Challenge</a></li>
-      <li><a routerLink="/leaderboard" routerLinkActive="active">Leaderboard</a></li>
-      <li><a routerLink="/login" routerLinkActive="active">Login</a></li>
+      <li><a routerLink="/" routerLinkActive="active-link" [routerLinkActiveOptions]="{exact: true}">Home</a></li>
+      <li><a routerLink="/daily-challenge" routerLinkActive="active-link">Daily Challenge</a></li>
+      <li><a routerLink="/leaderboard" routerLinkActive="active-link">Leaderboard</a></li>
+
+      <li *ngIf="!(isAuthenticated$ | async)">
+        <button (click)="login()">Login with Google</button>
+      </li>
+      <li *ngIf="(isAuthenticated$ | async) && (currentUser$ | async) as user">
+        <span>Welcome, {{ user.display_name }}!</span>
+        <button (click)="logout()">Logout</button>
+      </li>
     </ul>
   </nav>
-</header>
+  </header>
 
 <main>
   <router-outlet></router-outlet>
 </main>
 
 <footer>
-  <p>&copy; 2025 Your Game Name</p>
+  <p>&copy; 2025 SonicGuessr</p>
 </footer>
