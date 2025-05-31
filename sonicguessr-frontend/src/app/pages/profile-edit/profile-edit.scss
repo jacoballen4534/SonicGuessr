@@ -1,0 +1,139 @@
+@use '../../typography/theme-variables.scss' as *; // Adjust path to your theme variables
+@use 'sass:color';
+
+.profile-edit-page {
+  max-width: 600px;
+  margin: $spacing-lg auto; // Center the page content
+  padding: $spacing-md;     // Padding for smaller screens, or if no card is used
+}
+
+.profile-form-card { // This is your main styled container
+  background-color: $secondary-bg; // Or $white if page bg is $secondary-bg
+  padding: $spacing-xl;
+  border-radius: $border-radius-lg;
+  box-shadow: $box-shadow-soft;
+
+  .page-title {
+    font-family: $font-family-headings;
+    color: $accent-primary;
+    text-align: center;
+    font-size: 1.8rem;
+    margin-top: 0;
+    margin-bottom: $spacing-lg;
+  }
+}
+
+.current-profile-info {
+  display: flex;
+  align-items: center;
+  margin-bottom: $spacing-lg;
+  padding-bottom: $spacing-lg;
+  border-bottom: 1px solid color.adjust($secondary-bg,  $lightness: -10%); // Assuming card is $secondary-bg
+  .profile-avatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-right: $spacing-md;
+    border: 2px solid $accent-secondary;
+  }
+
+  .info-text {
+    font-family: $font-family-base;
+    color: $text-color;
+    p {
+      margin: $spacing-xs 0;
+      strong {
+        font-weight: 600;
+      }
+    }
+  }
+}
+
+.profile-form {
+  .form-field {
+    margin-bottom: $spacing-lg;
+
+    label {
+      display: block;
+      font-family: $font-family-base;
+      font-weight: 600;
+      color: $text-color;
+      margin-bottom: $spacing-sm;
+    }
+
+    input[type="text"],
+    input[type="url"] {
+      width: 100%;
+      padding: 12px 15px;
+      font-family: $font-family-base;
+      font-size: 1rem;
+      color: $text-color;
+      background-color: $white;
+      border: 1px solid color.adjust($secondary-bg, $lightness: -20%);
+      border-radius: $border-radius-md;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      box-sizing: border-box; // Important for width: 100% and padding
+
+      &:focus {
+        outline: none;
+        border-color: $accent-primary;
+        box-shadow: 0 0 0 3px rgba($accent-primary, 0.2);
+      }
+    }
+
+    .validation-error {
+      margin-top: $spacing-xs;
+      small {
+        font-family: $font-family-base;
+        color: $error-color; // Use your defined error color
+        font-size: 0.85em;
+      }
+    }
+  }
+
+  .profile-image-preview {
+    display: block;
+    max-width: 100px;
+    max-height: 100px;
+    border-radius: $border-radius-sm;
+    margin-top: $spacing-sm;
+    border: 1px solid $secondary-bg;
+  }
+
+  .form-actions {
+    margin-top: $spacing-xl;
+    text-align: right; // Or center
+
+    .button-cta { // Your existing CTA button style
+      padding: 12px 28px;
+      font-size: 1rem;
+      // Ensure it uses variables like $accent-primary, $white, etc.
+    }
+  }
+}
+
+// Styling for feedback messages if using dedicated divs instead of app-feedback-display
+// Or ensure app-feedback-display is styled appropriately by its own SCSS
+// .feedback-message {
+//   margin-top: $spacing-md;
+//   padding: $spacing-md;
+//   border-radius: $border-radius-sm;
+//   text-align: center;
+//   &.success {
+//     background-color: lighten($accent-tertiary, 35%);
+//     color: darken($accent-tertiary, 20%);
+//     border: 1px solid $accent-tertiary;
+//   }
+//   &.error {
+//     background-color: lighten($error-color, 35%);
+//     color: darken($error-color, 10%);
+//     border: 1px solid $error-color;
+//   }
+// }
+
+// Ensure your app-feedback-display component's styles are sufficient,
+// or adjust its inputs/styles if needed for this context.
+// The 'type' input of app-feedback-display can use 'correct' (for success) and 'incorrect' (for error).
+// You'll need to set component properties like `feedbackDisplay_message` and `feedbackDisplay_type`
+// in your ProfileEditComponent.ts after the update attempt.
