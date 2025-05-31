@@ -1,0 +1,146 @@
+// src/app/components/layout/header/header.scss
+@use '../../../typography/theme-variables.scss' as *; // Adjust path to your theme variables
+@use 'sass:color';
+
+.app-header {
+  background-color: $white;
+  box-shadow: $box-shadow-soft;
+  padding: 10px $spacing-lg; // e.g., 10px 24px
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 60px; // Or your preferred header height
+  position: sticky; // Make header sticky if desired
+  top: 0;
+  z-index: 1000; // Ensure it's above other content if sticky
+}
+
+.logo-container {
+  .logo-link {
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+  }
+  .logo-image {
+    height: 40px; // Adjust as needed
+    margin-right: $spacing-sm;
+  }
+  .logo-text {
+    font-family: $font-family-headings;
+    font-size: 1.8rem; // Adjust as needed
+    font-weight: 700;
+    color: $accent-primary;
+    // Example: text-shadow: 1px 1px 2px rgba(darken($accent-primary, 20%), 0.2);
+  }
+}
+
+.main-nav {
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: $spacing-sm; // Space between nav items
+  }
+
+  li {
+    a {
+      font-family: $font-family-headings;
+      font-weight: 600;
+      color: $text-color;
+      padding: 10px 15px;
+      border-radius: $border-radius-md;
+      text-decoration: none;
+      transition: background-color 0.2s ease, color 0.2s ease;
+
+      &:hover {
+        background-color: color.adjust($accent-secondary, $alpha: -0.8); // Lighter yellow
+        color: $text-color;
+      }
+
+      &.active-nav-link {
+        background-color: $accent-primary;
+        color: $white;
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+      }
+    }
+  }
+}
+
+.user-actions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+
+  .user-profile-display {
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+
+    .profile-link {
+        display: flex;
+        align-items: center;
+        text-decoration: none;
+        padding: 5px;
+        border-radius: $border-radius-md;
+        transition: background-color 0.2s ease;
+        &:hover {
+            background-color: $secondary-bg;
+        }
+    }
+
+    .user-avatar, .user-avatar-placeholder {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 2px solid $accent-secondary;
+      object-fit: cover;
+      font-family: $font-family-headings;
+      font-weight: bold;
+      color: $accent-primary;
+      background-color: $white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 1.1rem;
+    }
+
+    .user-name {
+      font-weight: 600;
+      color: $text-color;
+      margin-left: $spacing-xs; // Small space after avatar if inside link
+      margin-right: $spacing-md; // Space before logout button
+    }
+  }
+
+  .login-button { // Uses .button-cta styles
+    // If you have global .button-cta, just apply the class in HTML
+    // Otherwise, define similar styles here using theme variables
+    padding: 8px 18px;
+    background-color: $accent-primary;
+    color: $white;
+    border: none;
+    border-radius: $border-radius-md;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+     &:hover {
+        background-color: color.adjust($accent-primary, $lightness: -8%);
+     }
+  }
+
+  .logout-button { // Uses .button-secondary styles (example)
+    padding: 8px 15px;
+    background-color: $secondary-bg;
+    color: $text-color;
+    border: 1px solid color.adjust($secondary-bg, $lightness: 10%);
+    border-radius: $border-radius-md;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    &:hover {
+        background-color: color.adjust($secondary-bg, $lightness: 5%);
+        border-color: color.adjust($secondary-bg, $lightness: 20%);
+    }
+  }
+}

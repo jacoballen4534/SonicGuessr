@@ -1,0 +1,37 @@
+<header class="app-header">
+  <div class="logo-container">
+    <a routerLink="/" class="logo-link">
+      <span class="'logo-text'">{{ appName }}</span>
+    </a>
+  </div>
+
+  <nav class="main-nav">
+    <ul>
+      <li><a routerLink="/" routerLinkActive="active-nav-link" [routerLinkActiveOptions]="{exact: true}">Home</a></li>
+      <li><a routerLink="/daily-challenge" routerLinkActive="active-nav-link">Daily Challenge</a></li>
+      <li><a routerLink="/leaderboard" routerLinkActive="active-nav-link">Leaderboard</a></li>
+    </ul>
+  </nav>
+
+  <div class="user-actions">
+    <ng-container *ngIf="(isAuthenticated$ | async); else loggedOut">
+      <div *ngIf="(currentUser$ | async) as user" class="user-profile-display">
+        <a routerLink="/profile/edit" class="profile-link" title="Edit Profile">
+          <img 
+            *ngIf="user.profile_image_url" 
+            [src]="user.profile_image_url" 
+            alt="User Avatar" 
+            class="user-avatar">
+          <span *ngIf="!user.profile_image_url" class="user-avatar-placeholder">
+            {{ (user.username || user.display_name || 'U').charAt(0).toUpperCase() }}
+          </span>
+          <span class="user-name">{{ user.username || user.display_name }}</span>
+        </a>
+        <button (click)="logout()" class="button-secondary logout-button">Logout</button>
+      </div>
+    </ng-container>
+    <ng-template #loggedOut>
+      <button (click)="login()" class="button-cta login-button">Login with Google</button>
+    </ng-template>
+  </div>
+</header>
