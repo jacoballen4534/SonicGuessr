@@ -23,26 +23,19 @@
     <p><strong>Artist Hint (Dev only):</strong> {{ activeSong.artist }}</p>
     <img *ngIf="activeSong.album_art_url" [src]="activeSong.album_art_url" alt="Album art" width="150">
     
+    <div *ngIf="activeSong || (!isLoading && dailySongs.length === 0)"> <p><strong>Total Score: {{ totalDailyScore }}</strong></p>
+</div>
+
     <p>Current Snippet Level: {{ SNIPPET_LEVELS[currentSnippetLevelIndex].durationText || 'N/A' }}</p>
 
     <app-guess-input (guessSubmitted)="handleUserGuess($event)"></app-guess-input>
 
-    <div *ngIf="feedbackMessage" 
-          class="feedback-container"
-         [ngClass]="{'feedback-correct': isGuessCorrect, 'feedback-incorrect': !isGuessCorrect}">
-      <p>{{ feedbackMessage }}</p>
-      <p *ngIf="pointsScoredThisGuess > 0">You scored: {{ pointsScoredThisGuess }} points!</p>
-    </div>
-
-    <button *ngIf="isGuessCorrect === false && activeSong && currentSnippetLevelIndex < SNIPPET_LEVELS.length - 1" 
-            (click)="playNextSnippetLevel()">
-      Try Next Snippet ({{ SNIPPET_LEVELS[currentSnippetLevelIndex + 1].durationText }})
-    </button>
-
-    <div *ngIf="lastGuessResult">
-      <p>{{ lastGuessResult }}</p>
-    </div>
-
+    <app-feedback-display
+        [message]="feedbackDisplay_message"
+        [type]="feedbackDisplay_type"
+        [pointsAwarded]="feedbackDisplay_points"
+        [correctAnswer]="feedbackDisplay_correctAnswer">
+    </app-feedback-display>
 
     <button (click)="playCurrentSnippet()">Play Current Snippet</button>
         
