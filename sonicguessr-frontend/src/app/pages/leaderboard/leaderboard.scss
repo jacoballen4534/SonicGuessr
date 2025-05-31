@@ -1,37 +1,88 @@
-.leaderboard-container {
-  padding: 20px;
-  max-width: 600px;
-  margin: auto;
+// src/app/pages/leaderboard/leaderboard.scss
+@use '../../typography/theme-variables.scss' as *; // Adjust path
+@use 'sass:color'; // For color functions
 
-  h2 {
-    text-align: center;
-    margin-bottom: 20px;
+// This class should be on the main container div within your leaderboard.html template
+.leaderboard-page-container { // Renamed for clarity, use this on your root div in leaderboard.html
+  max-width: 700px;      // Or your preferred max width for the leaderboard content
+  margin: $spacing-lg auto; // Center the container on the page with top/bottom margin
+  padding: $spacing-lg;    // Internal padding for the content within this container
+  background-color: $secondary-bg; // Optional: if you want a card-like bg for the whole page content
+  border-radius: $border-radius-lg; // Optional: if using a card-like bg
+  box-shadow: $box-shadow-soft;     // Optional: if using a card-like bg
+}
+
+.leaderboard-title {
+  font-family: $font-family-headings;
+  color: $accent-primary;
+  text-align: center;
+  font-size: 2rem; // Adjusted size
+  margin-bottom: $spacing-lg;
+}
+
+table {
+  width: 100%; // Table will take full width of its container (e.g., .leaderboard-page-container)
+  border-collapse: collapse;
+  font-family: $font-family-base;
+  background-color: $white; // Table itself can have a white background
+  border-radius: $border-radius-md; // Rounded corners for the table if it's distinct
+  overflow: hidden; // To make border-radius work with table rows
+  box-shadow: $box-shadow-soft; // Soft shadow for the table itself
+
+  th {
+    background-color: $accent-primary;
+    color: $white;
+    font-family: $font-family-headings;
+    font-weight: 600;
+    padding: $spacing-md; // Adjusted padding
+    text-align: left;
   }
 
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    th, td {
-      border: 1px solid #ddd;
-      padding: 8px;
-      text-align: left;
-    }
-    th {
-      background-color: #f2f2f2;
-    }
-    tbody tr:nth-child(odd) {
-      background-color: #f9f9f9;
+  td {
+    padding: $spacing-md; // Adjusted padding
+    color: $text-color;
+    border-bottom: 1px solid $secondary-bg; // Lighter border for rows
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  tbody tr:hover {
+    background-color: color.adjust($accent-secondary, $alpha: -0.7); // Using adjust for hover, making it subtle
+  }
+
+  .highlight-user {
+    background-color: $accent-secondary !important; 
+    color: color.adjust($text-color, $lightness: -10%) !important; // Ensure good contrast
+    font-weight: bold;
+    
+    &:hover {
+        background-color: color.adjust($accent-secondary, $lightness: -10%) !important;
     }
   }
 }
 
-.highlight-user {
-  background-color: #fff3cd; // A light yellow highlight
-  font-weight: bold;
-}
 .separator-row td {
   text-align: center;
   font-style: italic;
-  border: none;
-  padding: 5px 0;
+  color: $text-muted;
+  padding: $spacing-sm 0; // Reduced padding for separator
+  border-bottom: 1px solid $secondary-bg;
+  background-color: $primary-bg; // Slightly different background for separator
+}
+
+
+.loading-text, .error-text, .empty-leaderboard-text {
+    text-align: center;
+    padding: $spacing-xl;
+    font-family: $font-family-base;
+    color: $text-muted;
+    font-size: 1.1rem;
+    // Ensure these messages are within a container that has appropriate styling if needed
+    // For example, if they are inside the .leaderboard-page-container they will inherit its background if not styled.
+}
+.error-text { 
+    color: $accent-primary; // Using primary accent for error text
+    font-weight: 500;
 }

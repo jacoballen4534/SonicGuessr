@@ -1,15 +1,15 @@
-<div class="leaderboard-container">
-  <h2>Today's Leaderboard</h2>
+<div class="leaderboard-page-container"> 
+  <h2 class="leaderboard-title">Today's Leaderboard</h2>
 
-  <div *ngIf="isLoading"><p>Loading leaderboard...</p></div>
-  <div *ngIf="error"><p style="color: red;">{{ error }}</p></div>
+  <div *ngIf="isLoading" class="loading-text"><p>Shuffling the scores... hang tight!</p></div>
+  <div *ngIf="error" class="error-text"><p>{{ error }}</p></div>
 
-  <div *ngIf="!isLoading && !error && topEntries.length === 0 && !currentUserEntry">
-    <p>The leaderboard is empty. Be the first to set a score!</p>
+  <div *ngIf="!isLoading && !error && topEntries.length === 0 && !currentUserEntry" class="empty-leaderboard-text">
+    <p>The leaderboard is looking a bit lonely! Play the daily challenge to make your mark!</p>
   </div>
 
   <table *ngIf="!isLoading && !error && (topEntries.length > 0 || currentUserEntry)">
-    <thead>
+        <thead>
       <tr>
         <th>Rank</th>
         <th>Player</th>
@@ -35,10 +35,7 @@
     </tbody>
   </table>
 
-  <div *ngIf="!isLoading && !error && currentUserEntry && currentUserEntry.rank > 10 && isCurrentUserInTopTen()">
-    </div>
-  <div *ngIf="!isLoading && !error && loggedInUser && !currentUserEntry">
+  <div *ngIf="!isLoading && !error && loggedInUser && !currentUserEntry && topEntries.length === 0" class="empty-leaderboard-text">
      <p>You haven't played today yet!</p>
   </div>
-
 </div>
