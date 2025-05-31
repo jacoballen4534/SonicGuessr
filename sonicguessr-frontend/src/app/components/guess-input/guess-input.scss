@@ -1,0 +1,108 @@
+// First, make sure to import/use your theme variables
+// Adjust the path according to your project structure
+@use '../../typography/theme-variables.scss' as *; // Example path from a component in components/ to styles/
+@use 'sass:color'; // For color functions like color.adjust
+
+.guess-input-container { // Assuming your component has a container div
+  position: relative; // For absolute positioning of the suggestions list if needed, though not strictly necessary here.
+  // Add any specific styling for the container if needed
+}
+
+// Styling for the input field itself (can be enhanced)
+// You might have some global input styles, or style it here.
+form {
+  display: flex; // To align input and button
+  gap: $spacing-sm;
+  margin-bottom: $spacing-xs; // Small space before suggestions appear
+
+  input[type="text"] {
+    flex-grow: 1;
+    padding: 10px 15px;
+    font-family: $font-family-base;
+    font-size: 1rem;
+    color: $text-color;
+    border: 1px solid color.adjust($secondary-bg, $lightness: 15%);
+    border-radius: $border-radius-md;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+    &:focus {
+      outline: none;
+      border-color: $accent-primary;
+      box-shadow: 0 0 0 3px rgba($accent-primary, 0.25);
+    }
+  }
+
+  button[type="submit"] {
+    // Using a variation of the .button-cta style
+    padding: 10px 20px;
+    background-color: $accent-primary;
+    color: $white;
+    border: none;
+    border-radius: $border-radius-md;
+    font-family: $font-family-base;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+
+    &:hover:not(:disabled) {
+      background-color: color.adjust($accent-primary, $lightness: -7%);
+    }
+    &:disabled {
+      background-color: color.adjust($text-muted, $lightness: -25%);
+      cursor: not-allowed;
+    }
+  }
+}
+
+
+.autocomplete-suggestions {
+  list-style-type: none;
+  padding: 0;
+  margin: 0; // Reset margin if any default
+  
+  // Positioning: Could be absolute if it needs to overlay other content.
+  // If it's directly below the input within the same flow, relative is fine.
+  // For this example, let's assume it flows naturally below the form.
+  // If you make it absolute:
+  // position: absolute;
+  // width: 100%; /* Match the width of the input's container */
+  // top: 100%; /* Position it right below the input */
+  // left: 0;
+  // z-index: 1000; /* Ensure it's above other elements */
+
+  background-color: $white;
+  border: 1px solid color.adjust($secondary-bg, $lightness: 10%);
+  border-top: none; // Nice touch if it sits directly under the input without a gap
+  border-radius: 0 0 $border-radius-md $border-radius-md; // Rounded bottom corners
+  box-shadow: $box-shadow-soft;
+  max-height: 200px; // Or your preferred max height
+  overflow-y: auto;  // Add scrollbar if suggestions exceed max-height
+
+  li {
+    padding: $spacing-sm $spacing-md; // e.g., 8px 16px
+    cursor: pointer;
+    font-family: $font-family-base;
+    color: $text-color;
+    border-bottom: 1px solid $secondary-bg; // Subtle separator
+    transition: background-color 0.15s ease, color 0.15s ease;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    &:hover, &.suggestion-active { // Add a class for keyboard navigation active state later
+      background-color: color.adjust($accent-secondary, $lightness: -25%);
+      color: $text-color; // Keep text color or make it slightly darker for contrast
+    }
+
+    .suggestion-title {
+      font-weight: 600; // Make title slightly bolder
+    }
+
+    .suggestion-artist {
+      color: $text-muted;
+      font-size: 0.9em;
+      margin-left: 5px;
+    }
+  }
+}

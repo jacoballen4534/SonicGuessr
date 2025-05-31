@@ -14,7 +14,7 @@
 
   <ul *ngIf="suggestions.length > 0" class="autocomplete-suggestions">
     <li *ngFor="let suggestion of suggestions" (click)="selectSuggestion(suggestion)">
-      {{ suggestion.title }} - {{ suggestion.artist }}
+      <span class="suggestion-title">{{ suggestion.title }}</span> - <span class="suggestion-artist">{{ suggestion.artist }}</span>
     </li>
   </ul>
 </div>
