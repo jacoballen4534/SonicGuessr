@@ -1,17 +1,20 @@
 <div>
   <h2>Today's Challenge</h2>
 
-  <div *ngIf="isLoading">
-    <p>Loading songs...</p>
-  </div>
-  <div *ngIf="error">
-    <p style="color: red;">{{ error }}</p>
-  </div>
+  <div *ngIf="isLoading"><p>Loading songs...</p></div>
+  <div *ngIf="error"><p style="color: red;">{{ error }}</p></div>
 
-  <div *ngIf="!isLoading && !error && !activeSong && dailySongs.length > 0">
+  <app-feedback-display
+      [message]="feedbackDisplay_message"
+      [type]="feedbackDisplay_type"
+      [pointsAwarded]="feedbackDisplay_points"
+      [correctAnswer]="feedbackDisplay_correctAnswer">
+  </app-feedback-display>
+
+  <div *ngIf="!isLoading && !error && !activeSong && dailySongs.length > 0 && !(feedbackDisplay_message && feedbackDisplay_message.includes('completed all songs'))">
     <button (click)="startChallengeWithFirstSong()">Start Challenge</button>
   </div>
-  
+
   <div *ngIf="!isLoading && !error && dailySongs.length === 0 && !activeSong">
     <p>No songs available for today's challenge yet. Please check back later.</p>
   </div>
@@ -25,29 +28,22 @@
     <p>Current Snippet Level: {{ SNIPPET_LEVELS[currentSnippetLevelIndex].durationText || 'N/A' }}</p>
 
     <button (click)="playCurrentSnippet()">Play Current Snippet</button>
-
     <button (click)="skipToNextSnippet()" 
-            [disabled]="!activeSong || currentSnippetLevelIndex >= SNIPPET_LEVELS.length - 1">
+            [disabled]="currentSnippetLevelIndex >= SNIPPET_LEVELS.length - 1 || !activeSong">
       Skip to Next Snippet 
-      <span *ngIf="activeSong && currentSnippetLevelIndex < SNIPPET_LEVELS.length - 1">
+      <span *ngIf="currentSnippetLevelIndex < SNIPPET_LEVELS.length - 1">
         ({{ SNIPPET_LEVELS[currentSnippetLevelIndex + 1].durationText }})
       </span>
-      <span *ngIf="activeSong && currentSnippetLevelIndex >= SNIPPET_LEVELS.length - 1">
+      <span *ngIf="currentSnippetLevelIndex >= SNIPPET_LEVELS.length - 1">
         (No more)
       </span>
     </button>
 
     <app-guess-input (guessSubmitted)="handleUserGuess($event)"></app-guess-input>
 
-    <app-feedback-display
-        [message]="feedbackDisplay_message"
-        [type]="feedbackDisplay_type"
-        [pointsAwarded]="feedbackDisplay_points"
-        [correctAnswer]="feedbackDisplay_correctAnswer">
-    </app-feedback-display>
-
     <button (click)="nextSong()" 
-            [disabled]="activeSongIndex >= dailySongs.length - 1">
+            *ngIf="activeSongIndex < dailySongs.length - 1"
+            class="dev-next-song-button">
       Next Song (DEV - skip)
     </button>
   </div>
@@ -57,5 +53,4 @@
     [startSeconds]="playbackStartSeconds"
     [endSeconds]="playbackEndSeconds">
   </app-audio-player>
-  
 </div>

@@ -105,41 +105,37 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
     if (savedStateString) {
       try {
         const savedState = JSON.parse(savedStateString);
-        // Basic validation: ensure it has expected properties
-        if (savedState && typeof savedState.activeSongIndex === 'number' &&
-            typeof savedState.currentSnippetLevelIndex === 'number' &&
-            typeof savedState.totalDailyScore === 'number') {
-                
+        if (savedState && typeof savedState.activeSongIndex === 'number') {
           this.activeSongIndex = savedState.activeSongIndex;
           this.currentSnippetLevelIndex = savedState.currentSnippetLevelIndex || 0;
           this.totalDailyScore = savedState.totalDailyScore || 0;
-          this.proceedToNextSongOnLoad = savedState.proceedToNextSongOnLoad || false; // <<< LOAD THE FLAG
+          this.proceedToNextSongOnLoad = savedState.proceedToNextSongOnLoad || false;
 
           console.log('Loaded game state:', savedState);
 
           if (this.proceedToNextSongOnLoad) {
             console.log('Proceeding to next song due to saved flag.');
-            this.proceedToNextSongOnLoad = false; // Reset flag for current session
-            // Save state immediately to persist the reset flag, before nextSong might save again
+            this.proceedToNextSongOnLoad = false; 
             this.saveGameState(); 
-            this.nextSong(); // Call nextSong to handle the transition
+            this.nextSong();
           } else if (this.activeSongIndex === -1 && this.dailySongs.length > 0) { 
-            // Indicates challenge was previously completed fully
+            // Game was previously completed and state saved with activeSongIndex = -1
             this.feedbackDisplay_message = `You have completed all songs for today! Your total score: ${this.totalDailyScore}`;
             this.feedbackDisplay_type = 'info';
             this.activeSong = null;
             this.playbackVideoId = null;
+            console.log('Challenge previously completed. Displaying final score message from loaded state.');
           } else if (this.dailySongs && this.activeSongIndex >= 0 && this.activeSongIndex < this.dailySongs.length) {
             this.activeSong = this.dailySongs[this.activeSongIndex];
-            this.playCurrentSnippet(); // This will use the loaded currentSnippetLevelIndex & save state
+            this.playCurrentSnippet();
           } else {
             this.startChallengeWithFirstSong(); // Fallback
           }
-          return; // Exit after loading saved state
+          return;
         } else {
           console.warn('Invalid saved game state structure found. Starting fresh.');
           localStorage.removeItem(this.getStorageKey()); // Clear invalid state
-        }
+        } 
       } catch (e) {
         console.error('Error parsing saved game state. Starting fresh.', e);
         localStorage.removeItem(this.getStorageKey()); // Clear corrupted state
@@ -181,14 +177,24 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
     if (this.dailySongs && index >= 0 && index < this.dailySongs.length) {
       this.activeSongIndex = index;
       this.activeSong = this.dailySongs[index];
-      this.currentSnippetLevelIndex = 0; // Reset to the first snippet level for a new song
-      this.playCurrentSnippet();
+      this.currentSnippetLevelIndex = 0; // Reset to first snippet level for new song
+
+      // Clear any previous song's specific guess feedback before playing new snippet
+      this.feedbackDisplay_message = '';
+      this.feedbackDisplay_type = null;
+      this.feedbackDisplay_points = 0;
+      this.feedbackDisplay_correctAnswer = null;
+
+      this.playCurrentSnippet(); // This will set up playback vars and save state
     } else {
       console.warn('Attempted to set invalid active song index:', index);
-      this.activeSong = null;
-      this.playbackVideoId = null; // Clear playback if song is invalid
+      // Could set to a "challenge over" state if index is out of bounds high
+      if (index >= this.dailySongs.length) {
+          this.nextSong(); // Trigger end of challenge logic
+      }
     }
   }
+
 
   handleUserGuess(guess: string): void {
     if (!this.activeSong) {
@@ -295,30 +301,30 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
   // (getStorageKey, loadGameStateOrDefault, nextSong, etc. remain crucial)
   // Ensure nextSong also calls saveGameState or appropriately clears it when challenge is over.
   nextSong(): void {
-    this.proceedToNextSongOnLoad = false; // <<< RESET FLAG for the state of the upcoming song
+    this.proceedToNextSongOnLoad = false; // Reset flag for the new state
 
-    // Reset other feedback for the new song attempt
-    this.feedbackDisplay_message = '';
+    // Clear feedback related to the *previous* song's guess immediately
+    this.feedbackDisplay_message = ''; 
     this.feedbackDisplay_type = null;
     this.feedbackDisplay_points = 0;
     this.feedbackDisplay_correctAnswer = null;
 
-    let nextSongFound = false;
-    if (this.activeSongIndex < this.dailySongs.length - 1) {
-      this.setActiveSong(this.activeSongIndex + 1); // This calls playCurrentSnippet -> saveGameState
-      nextSongFound = true;
+    if (this.activeSong && this.activeSongIndex < this.dailySongs.length - 1) {
+      // There are more songs, advance index
+      this.setActiveSong(this.activeSongIndex + 1);
     } else {
-      // All songs completed
+      // This was the last song, or activeSong was already null (e.g. from load state)
       console.log('End of daily challenge songs.');
+      this.activeSong = null; 
+      this.activeSongIndex = -1; // Indicate challenge is truly done
+      this.currentSnippetLevelIndex = 0; // Reset for a potential new game next time
+      this.playbackVideoId = null; 
+
+      // Set the final feedback message
       this.feedbackDisplay_message = `You have completed all songs for today! Your total score: ${this.totalDailyScore}`;
       this.feedbackDisplay_type = 'info'; 
-      this.activeSong = null; 
-      this.activeSongIndex = -1; // Indicate challenge is done
-      this.currentSnippetLevelIndex = 0;
-      this.playbackVideoId = null; 
-      // Final save, which might include proceedToNextSongOnLoad: false and activeSongIndex: -1
-      // Or, the saveGameState has logic to clear storage upon true completion.
-      this.saveGameState(); 
+
+      this.saveGameState(); // Save the final "completed" state
     }
   }
 

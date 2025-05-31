@@ -1,1 +1,17 @@
-<p>feedback-display works!</p>
+<div *ngIf="message" 
+     class="feedback-container"
+     [ngClass]="{
+       'feedback-correct': type === 'correct', 
+       'feedback-incorrect': type === 'incorrect',
+       'feedback-info': type === 'info'
+     }">
+  <p class="feedback-message">{{ message }}</p>
+  
+  <p *ngIf="pointsAwarded > 0" class="feedback-points">
+    Points: +{{ pointsAwarded }}
+  </p>
+  
+  <div *ngIf="correctAnswer" class="feedback-correct-answer">
+    <p>The song was: <strong>{{ correctAnswer.title }}</strong> by <em>{{ correctAnswer.artist }}</em></p>
+  </div>
+</div>
