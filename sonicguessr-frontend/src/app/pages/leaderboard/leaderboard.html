@@ -1,1 +1,32 @@
-<p>leaderboard works!</p>
+<div class="leaderboard-container">
+  <h2>Today's Leaderboard</h2>
+
+  <div *ngIf="isLoading">
+    <p>Loading leaderboard...</p>
+  </div>
+
+  <div *ngIf="error">
+    <p style="color: red;">{{ error }}</p>
+  </div>
+
+  <div *ngIf="!isLoading && !error && leaderboardEntries.length === 0">
+    <p>The leaderboard is empty. Be the first to set a score!</p>
+  </div>
+
+  <table *ngIf="!isLoading && !error && leaderboardEntries.length > 0">
+    <thead>
+      <tr>
+        <th>Rank</th>
+        <th>Player</th>
+        <th>Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let entry of leaderboardEntries; let i = index">
+        <td>{{ i + 1 }}</td>
+        <td>{{ getPlayerDisplayName(entry) }}</td>
+        <td>{{ entry.total_score }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>

@@ -23,12 +23,20 @@ export interface GuessResponse {
   gameOverForSong?: boolean; // If incorrect and no more attempts
 }
 
+// Add interface for Leaderboard Entry
+export interface LeaderboardEntry {
+  username: string | null; // Username might be null if user hasn't set one
+  display_name: string;    // Google display name as fallback
+  total_score: number;
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class ChallengeService {
   private songsApiUrl = `${environment.apiBaseUrl}/daily-challenge/songs`;
   private guessApiUrl = `${environment.apiBaseUrl}/daily-challenge/guess`; // New API URL
+  private leaderboardApiUrl = `${environment.apiBaseUrl}/leaderboard/daily`; // New API URL
 
   constructor(private http: HttpClient) { }
 
@@ -41,5 +49,12 @@ export class ChallengeService {
     return this.http.post<GuessResponse>(this.guessApiUrl, payload, {
       withCredentials: true // Important if your backend uses session-based authentication
     });
+  }
+
+    // New method to fetch daily leaderboard
+  getDailyLeaderboard(): Observable<LeaderboardEntry[]> {
+    return this.http.get<LeaderboardEntry[]>(this.leaderboardApiUrl);
+    // Note: This endpoint on your backend is public/doesn't require authentication in the provided api-routes.js
+    // If it did require auth, you'd add { withCredentials: true }
   }
 }

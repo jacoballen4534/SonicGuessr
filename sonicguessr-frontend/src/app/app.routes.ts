@@ -14,6 +14,7 @@ export const routes: Routes = [
   { path: 'leaderboard', component: Leaderboard },
   { path: 'login', component: Login },
   { path: 'profile/edit', component: ProfileEdit }, // <<< ADD ROUTE FOR PROFILE EDIT
+
   // Example of a route that might require authentication (you'd add a guard later)
   // { path: 'profile/edit', component: ProfileEdit, canActivate: [AuthGuard] }, 
   { path: '**', redirectTo: '' } // Or a 404 component
