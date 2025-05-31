@@ -17,16 +17,25 @@
   </div>
 
   <div *ngIf="activeSong">
-
     <h3>Playing Song #{{ activeSongIndex + 1 }} of {{ dailySongs.length }}</h3>
     <p><strong>Title Hint (Dev only):</strong> {{ activeSong.title }}</p>
     <p><strong>Artist Hint (Dev only):</strong> {{ activeSong.artist }}</p>
     <img *ngIf="activeSong.album_art_url" [src]="activeSong.album_art_url" alt="Album art" width="150">
-    
-    <div *ngIf="activeSong || (!isLoading && dailySongs.length === 0)"> <p><strong>Total Score: {{ totalDailyScore }}</strong></p>
-</div>
 
     <p>Current Snippet Level: {{ SNIPPET_LEVELS[currentSnippetLevelIndex].durationText || 'N/A' }}</p>
+
+    <button (click)="playCurrentSnippet()">Play Current Snippet</button>
+
+    <button (click)="skipToNextSnippet()" 
+            [disabled]="!activeSong || currentSnippetLevelIndex >= SNIPPET_LEVELS.length - 1">
+      Skip to Next Snippet 
+      <span *ngIf="activeSong && currentSnippetLevelIndex < SNIPPET_LEVELS.length - 1">
+        ({{ SNIPPET_LEVELS[currentSnippetLevelIndex + 1].durationText }})
+      </span>
+      <span *ngIf="activeSong && currentSnippetLevelIndex >= SNIPPET_LEVELS.length - 1">
+        (No more)
+      </span>
+    </button>
 
     <app-guess-input (guessSubmitted)="handleUserGuess($event)"></app-guess-input>
 
@@ -37,8 +46,6 @@
         [correctAnswer]="feedbackDisplay_correctAnswer">
     </app-feedback-display>
 
-    <button (click)="playCurrentSnippet()">Play Current Snippet</button>
-        
     <button (click)="nextSong()" 
             [disabled]="activeSongIndex >= dailySongs.length - 1">
       Next Song (DEV - skip)

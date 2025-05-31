@@ -108,59 +108,67 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
       return;
     }
 
-    // Reset feedback for the new guess attempt
     this.feedbackDisplay_message = 'Submitting your guess...';
     this.feedbackDisplay_type = 'info';
     this.feedbackDisplay_points = 0;
     this.feedbackDisplay_correctAnswer = null;
 
-    // Construct the payload object
     const payload: GuessPayload = {
-      daily_challenge_song_id: this.activeSong.id, // Ensure your activeSong has the 'id' from the database
+      daily_challenge_song_id: this.activeSong.id,
       guess: guess,
-      currentLevel: this.currentSnippetLevelIndex + 1 // Assuming backend expects 1-based level for attempts/snippets
+      currentLevel: this.currentSnippetLevelIndex + 1 // Assuming backend expects 1-based
     };
 
     console.log('Submitting guess with payload:', payload);
 
     this.challengeService.submitGuess(payload).subscribe({
       next: (response: GuessResponse) => {
-        console.log('Guess response from backend:', response);
-        this.feedbackDisplay_message = response.message;
+        console.log('Backend Guess Response FULL:', JSON.stringify(response, null, 2));
+        this.feedbackDisplay_message = response.message; // Initial message from backend
 
         if (response.correct) {
           this.feedbackDisplay_type = 'correct';
           this.feedbackDisplay_points = response.pointsAwarded || 0;
           this.totalDailyScore += this.feedbackDisplay_points;
-
-          // Optionally reveal full song details from response if needed
-          // this.feedbackDisplay_correctAnswer = { title: response.songTitle!, artist: response.artist! };
           
           console.log(`Correct! You scored ${this.feedbackDisplay_points}. Total score: ${this.totalDailyScore}`);
           
-          // Prepare to move to the next song after a short delay
           setTimeout(() => {
+            this.feedbackDisplay_message = `Correct! "${response.songTitle || this.activeSong?.title}". Moving to the next song...`;
             this.nextSong();
-          }, 3000); // Adjust delay as needed
+          }, 2500); // Delay before moving to next song
 
         } else { // Incorrect guess
           this.feedbackDisplay_type = 'incorrect';
+          
           if (response.gameOverForSong) {
+            // Backend says game over for this song (e.g., max attempts reached server-side)
             this.feedbackDisplay_correctAnswer = { title: response.songTitle!, artist: response.artist! };
-            console.log(`Incorrect. Game over for this song. It was: ${response.songTitle}`);
-            // Prepare to move to the next song after showing the answer
+            this.feedbackDisplay_message = response.message; // Use backend's game over message
+            console.log(`Incorrect. Game over for this song (from backend). It was: ${response.songTitle}`);
             setTimeout(() => {
               this.nextSong();
-            }, 4000); // Longer delay to see answer
-          } else if (response.nextLevel) {
-            // The user can try the next snippet level for the same song.
-            // The UI should allow calling playNextSnippetLevel()
-            console.log('Incorrect. Try the next snippet level.');
-            // The feedback message from the server is already set.
-            // No need to automatically play; let the "Play Next Snippet Level" button handle it.
-          } else {
-            // Fallback for incorrect guess if no specific next step given by backend
-            console.log('Incorrect guess, no specific next step from backend.');
+            }, 4000);
+          } else { 
+            // Incorrect, but backend implies more attempts might be possible (e.g., response.nextLevel is present)
+            // Now, check if we have more snippet levels defined on the client-side.
+            if (this.currentSnippetLevelIndex < this.SNIPPET_LEVELS.length - 1) {
+              this.feedbackDisplay_message = response.message + " Playing a longer snippet..."; // Update feedback
+              console.log('Incorrect guess. Automatically playing next snippet level.');
+              // Optional: short delay for user to read feedback before new snippet plays
+              setTimeout(() => {
+                this.playNextSnippetLevel(); // This method increments level and plays
+              }, 1500); // 1.5 second delay, adjust as needed
+            } else {
+              // Client-side has no more defined snippet levels, even if backend didn't explicitly say "gameOverForSong"
+              // Treat as game over for this song from client's perspective.
+              console.log('Incorrect guess: No more client-side snippet levels. Treating as game over for song.');
+              this.feedbackDisplay_correctAnswer = this.activeSong ? { title: this.activeSong.title, artist: this.activeSong.artist } : null;
+              this.feedbackDisplay_message = response.message + ` The song was: ${this.activeSong?.title || 'Unknown'}. Moving to the next song...`;
+              setTimeout(() => {
+                this.nextSong();
+              }, 4000);
+            }
           }
         }
       },
@@ -177,24 +185,81 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
     });
   }
 
+  playNextSnippetLevel(): void {
+    if (!this.activeSong) {
+      console.warn('No active song to play next snippet level for.');
+      this.feedbackDisplay_message = 'No active song.'; // Update feedback
+      this.feedbackDisplay_type = 'incorrect';
+      return;
+    }
+    // Use 'this.SNIPPET_LEVELS'
+    if (this.currentSnippetLevelIndex < this.SNIPPET_LEVELS.length - 1) {
+      this.currentSnippetLevelIndex++;
+      this.feedbackDisplay_message = `Playing snippet level ${this.currentSnippetLevelIndex + 1}...`; // Update feedback
+      this.feedbackDisplay_type = 'info';
+      this.playCurrentSnippet(); // This will play the new currentSnippetLevelIndex
+    } else {
+      // This case means the user tried to play next snippet but was already at the last one.
+      // The handleUserGuess logic should ideally prevent reaching here if it treats last level fail as game over.
+      // But if called directly (e.g. from a button that wasn't disabled), provide feedback.
+      this.feedbackDisplay_message = `You're already at the last snippet level for "${this.activeSong.title}"!`;
+      this.feedbackDisplay_type = 'info';
+      console.log('Already at the last snippet level (client-side check in playNextSnippetLevel).');
+      // You might want to re-play the current (last) snippet if they click a button, or do nothing.
+      // For now, just a message. The game over logic is primarily in handleUserGuess.
+    }
+  }
+
   // Ensure your nextSong method is also using the `feedbackDisplay_` prefixed variables
+  // and resets relevant states for the new song.
   nextSong(): void {
-    // Reset feedback state using the correct property names
+    // Reset feedback state for the new song
     this.feedbackDisplay_message = '';
     this.feedbackDisplay_type = null;
     this.feedbackDisplay_points = 0;
     this.feedbackDisplay_correctAnswer = null;
   
     if (this.activeSongIndex < this.dailySongs.length - 1) {
-      this.setActiveSong(this.activeSongIndex + 1);
+      this.setActiveSong(this.activeSongIndex + 1); // This will set new activeSong, reset snippetLevelIndex, and call playCurrentSnippet
     } else {
       console.log('End of daily challenge songs.');
       this.feedbackDisplay_message = `You have completed all songs for today! Your total score: ${this.totalDailyScore}`;
       this.feedbackDisplay_type = 'info'; 
       this.activeSong = null; 
       this.playbackVideoId = null; 
+      // Maybe also clear currentSnippetLevelIndex or set activeSongIndex to an invalid state
+      this.currentSnippetLevelIndex = 0; 
+      this.activeSongIndex = -1; // Or some indicator that challenge is over
     }
   }
+  
+    skipToNextSnippet(): void {
+    if (!this.activeSong) {
+      this.feedbackDisplay_message = 'No active song to skip snippet for.';
+      this.feedbackDisplay_type = 'info';
+      console.warn('Skip action: No active song.');
+      return;
+    }
+
+    // Check if there's a next snippet level available based on client-side SNIPPET_LEVELS
+    if (this.currentSnippetLevelIndex < this.SNIPPET_LEVELS.length - 1) {
+      this.currentSnippetLevelIndex++; // Advance to the next snippet level
+
+      // Update feedback and play the new current snippet
+      this.feedbackDisplay_message = `Playing next snippet (level ${this.currentSnippetLevelIndex + 1}: ${this.SNIPPET_LEVELS[this.currentSnippetLevelIndex].durationText})...`;
+      this.feedbackDisplay_type = 'info';
+      this.feedbackDisplay_points = 0; // No points for skipping
+      this.feedbackDisplay_correctAnswer = null; // Clear any previous correct answer display
+
+      console.log(`User skipped to snippet level <span class="math-inline">\{this\.currentSnippetLevelIndex \+ 1\} for song "</span>{this.activeSong.title}"`);
+      this.playCurrentSnippet(); // This method already sets up and plays the current level
+    } else {
+      this.feedbackDisplay_message = 'You are already at the longest snippet for this song!';
+      this.feedbackDisplay_type = 'info';
+      console.log('Skip action: Already at the last snippet level.');
+    }
+  }
+
 
   playCurrentSnippet(): void {
     if (this.activeSong && this.SNIPPET_LEVELS[this.currentSnippetLevelIndex]) {
@@ -223,21 +288,6 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
     } else {
       console.warn('No active song or current snippet level configuration to play.');
       this.playbackVideoId = null;
-    }
-  }
-
-  playNextSnippetLevel(): void {
-    if (!this.activeSong) {
-      console.warn('No active song to play next snippet level for.');
-      return;
-    }
-    if (this.currentSnippetLevelIndex < this.SNIPPET_LEVELS.length - 1) {
-      this.currentSnippetLevelIndex++;
-      this.playCurrentSnippet();
-    } else {
-      console.log('Already at the last snippet level for this song.');
-      // Here you might reveal the song or handle "no more attempts" for this song.
-      alert(`No more snippets! The song was: ${this.activeSong.title} by ${this.activeSong.artist}`);
     }
   }
 }
