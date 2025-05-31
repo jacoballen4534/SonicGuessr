@@ -8,7 +8,7 @@ import { provideHttpClient, withFetch } from '@angular/common/http'; // Import t
 export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(routes, withEnabledBlockingInitialNavigation()),
-    // provideClientHydration(withEventReplay()), // For SSR
+    provideClientHydration(withEventReplay()), // For SSR
     provideHttpClient(withFetch()) // Add this line to enable HttpClient with fetch
     // provideHttpClient() // Or just this if you don't want to specify withFetch yet
   ]

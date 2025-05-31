@@ -9,7 +9,7 @@ import { config } from './app/app.config.server'; // Ensure this path is correct
 // Define a function that performs the bootstrap and returns the Promise<ApplicationRef>
 // This function will be our default export for the server, and can also be called on the client.
 const bootstrap = (): Promise<ApplicationRef> => {
-  return bootstrapApplication(App, appConfig)
+  return bootstrapApplication(App, config)
     .then(appRef => {
       // Optional: expose appRef for debugging in the browser console
       if (typeof window !== 'undefined') {
