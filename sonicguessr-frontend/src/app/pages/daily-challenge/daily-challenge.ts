@@ -45,6 +45,8 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
   feedbackDisplay_correctAnswer: { title: string, artist: string } | null = null;
   private todayDateString: string = ''; // To store YYYY-MM-DD
   public isDev: boolean = false; // Flag for dev-only elements
+  public albumArtStyle: string = ''; // To bind to [style.filter] in the template
+  public isAlbumArtLoading: boolean = false; // New flag
 
 
   // Property to track total score for the daily challenge
@@ -134,6 +136,7 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
             console.log('Challenge previously completed. Displaying final score message from loaded state.');
           } else if (this.dailySongs && this.activeSongIndex >= 0 && this.activeSongIndex < this.dailySongs.length) {
             this.activeSong = this.dailySongs[this.activeSongIndex];
+            this.updateAlbumArtBlur(); // <<< UPDATE BLUR after restoring activeSong & currentSnippetLevelIndex
             this.playCurrentSnippet();
           } else {
             this.startChallengeWithFirstSong(); // Fallback
@@ -177,11 +180,31 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
 
 
   startChallengeWithFirstSong(): void {
-    this.setActiveSong(0);
+    this.totalDailyScore = 0;
+    this.currentSnippetLevelIndex = 0;
+    this.proceedToNextSongOnLoad = false;
+    // Ensure activeSongIndex is set before calling setActiveSong if it relies on it
+    if (this.dailySongs.length > 0) {
+        this.setActiveSong(0); 
+    } else {
+        this.activeSong = null;
+        this.activeSongIndex = -1;
+        this.updateAlbumArtBlur(); // Ensure blur is cleared if no songs
+        this.saveGameState();
+    }
   }
+
 
   setActiveSong(index: number): void {
     if (this.dailySongs && index >= 0 && index < this.dailySongs.length) {
+
+      if (!this.activeSong || this.activeSong.id !== this.dailySongs[index].id) {
+        this.isAlbumArtLoading = true; // <<< Set loading flag for new image
+        // Pre-set blur to max for the container before new image source is bound
+        // updateAlbumArtBlur will be called again in playCurrentSnippet with correct level 0 blur
+        this.albumArtStyle = `blur(${this.SNIPPET_LEVELS.length > 0 ? 20 : 0}px)`; // Default high blur, or 0 if no levels
+      }
+
       this.activeSongIndex = index;
       this.activeSong = this.dailySongs[index];
       this.currentSnippetLevelIndex = 0; // Reset to first snippet level for new song
@@ -192,15 +215,58 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
       this.feedbackDisplay_points = 0;
       this.feedbackDisplay_correctAnswer = null;
 
+      this.updateAlbumArtBlur(); // <<< CALL BLUR UPDATE
       this.playCurrentSnippet(); // This will set up playback vars and save state
+    } else if (index >= this.dailySongs.length) {
+        this.nextSong(); 
     } else {
       console.warn('Attempted to set invalid active song index:', index);
-      // Could set to a "challenge over" state if index is out of bounds high
-      if (index >= this.dailySongs.length) {
-          this.nextSong(); // Trigger end of challenge logic
-      }
+      this.activeSong = null;
+      this.albumArtStyle = 'blur(0px)';
+      this.isAlbumArtLoading = false; // No image to load
+      this.saveGameState();
     }
   }
+
+  onAlbumArtLoaded(): void {
+    this.isAlbumArtLoading = false;
+    console.log('New album art image loaded.');
+  }
+
+  private updateAlbumArtBlur(): void {
+    if (!this.activeSong || !this.activeSong.album_art_url || !isPlatformBrowser(this.platformId)) {
+      this.albumArtStyle = 'blur(0px)'; // Default to no blur or clear if no art/not browser
+      this.isAlbumArtLoading = false; // Ensure loading is false if no art
+      return;
+    }
+
+    const maxBlurPx = 20; // Maximum blur in pixels
+    const minBlurPx = 0;  // No blur
+    const totalSnippetLevels = this.SNIPPET_LEVELS.length;
+
+    // Ensure currentSnippetLevelIndex is valid for calculation
+    const effectiveLevel = Math.max(0, Math.min(this.currentSnippetLevelIndex, totalSnippetLevels - 1));
+
+    let blurAmount = maxBlurPx;
+
+    if (totalSnippetLevels > 1) {
+      // Linear interpolation: blur decreases as level increases
+      blurAmount = maxBlurPx - (effectiveLevel / (totalSnippetLevels - 1)) * (maxBlurPx - minBlurPx);
+    } else {
+      // If only one level (or zero levels), show clearly or max blur based on preference
+      blurAmount = minBlurPx; // Show clearly if only one level
+    }
+    
+    // Ensure blurAmount is a finite number and within bounds
+    blurAmount = Math.max(minBlurPx, Math.min(maxBlurPx, blurAmount));
+    if (!isFinite(blurAmount)) {
+        blurAmount = minBlurPx; // Fallback to clear if calculation error
+    }
+
+    this.albumArtStyle = `blur(${blurAmount.toFixed(1)}px)`;
+    console.log(`Album art blur set for snippet level index ${this.currentSnippetLevelIndex}: ${this.albumArtStyle}`);
+  }
+
 
 
   handleUserGuess(guess: string): void {
@@ -331,6 +397,7 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
       this.feedbackDisplay_message = `You have completed all songs for today! Your total score: ${this.totalDailyScore}`;
       this.feedbackDisplay_type = 'info'; 
 
+      this.albumArtStyle = 'blur(0px)'; // Clear blur at end of challenge
       this.saveGameState(); // Save the final "completed" state
     }
   }
@@ -369,11 +436,19 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
     if (this.activeSong && this.SNIPPET_LEVELS[this.currentSnippetLevelIndex]) {
       const levelConfig = this.SNIPPET_LEVELS[this.currentSnippetLevelIndex];
       
+      // If the image source is changing for the active song, mark as loading
+      if (this.playbackVideoId !== this.activeSong.youtube_video_id) { // Simplified check
+          if (this.activeSong.album_art_url) { // Only if there's an art URL
+            this.isAlbumArtLoading = true;
+          }
+      }
+
       this.playbackVideoId = this.activeSong.youtube_video_id;
       this.playbackStartSeconds = levelConfig.start;
       this.playbackEndSeconds = levelConfig.end;
       
       console.log(`Prepared to play snippet for "${this.activeSong.title}", Level ${levelConfig.id} (${levelConfig.durationText})`);
+      this.updateAlbumArtBlur(); // <<< ENSURE THIS IS CALLED to update blur for current level
 
       // The <app-audio-player> in the template will get these new input values.
       // Its ngOnChanges should handle loading/re-loading the video.
@@ -392,6 +467,9 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
     } else {
       console.warn('No active song or current snippet level configuration to play.');
       this.playbackVideoId = null;
+      this.albumArtStyle = 'blur(0px)'; // Default to no blur
+      this.isAlbumArtLoading = false;
+      this.saveGameState(); 
     }
   }
 

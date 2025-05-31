@@ -1,9 +1,9 @@
-<app-header></app-header>
+<div class="app-wrapper"> 
+  <app-header></app-header>
 
-<main class="content-area">
-  <router-outlet></router-outlet>
-</main>
+  <main class="content-area">
+    <router-outlet></router-outlet>
+  </main>
 
-<footer class="app-footer"> 
-    <p>&copy; {{ getYear() }} SonicGuessr. All rights reserved.</p>
-</footer>
+  <app-footer></app-footer>
+</div>

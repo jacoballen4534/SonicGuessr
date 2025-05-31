@@ -1,186 +1,298 @@
-// src/app/pages/daily-challenge/daily-challenge.scss
+// Import your theme variables and sass:color module
+// Adjust the path to your theme variables file as necessary.
 @use '../../typography/theme-variables.scss' as *; // Adjust path to your theme variables
-@use 'sass:color'; // For color functions like color.adjust
+@use 'sass:color';
 
+// Overall page container for daily challenge
 .daily-challenge-page {
-  padding: $spacing-md $spacing-lg; // Example
-  max-width: 800px;
-  margin: $spacing-lg auto; // Center the page content
+  max-width: 750px; // Max width for the main content block
+  margin: $spacing-lg auto; // Center the block with top/bottom margin
+  padding: $spacing-sm;    // Padding for smaller screens
   display: flex;
   flex-direction: column;
-  gap: $spacing-lg;
+  gap: $spacing-lg;      // Space between main sections/cards
+
+  @media (min-width: 768px) { // More padding on larger screens
+    padding: $spacing-lg;
+  }
 }
 
+// General card styling to be used by different sections
 .card-style {
-  background-color: $secondary-bg;
+  background-color: $secondary-bg; // Or $white if page background is $secondary-bg
   padding: $spacing-md $spacing-lg;
   border-radius: $border-radius-lg;
   box-shadow: $box-shadow-soft;
 }
 
+// Header section within the daily challenge page
 .challenge-page-header {
+  @extend .card-style; // Use card styling for the header block
   text-align: center;
-  margin-bottom: $spacing-md;
+  margin-bottom: 0; // Gap will handle spacing if header is separate from other cards
+
   h2 {
     font-family: $font-family-headings;
     color: $accent-primary;
     font-size: 2rem;
+    margin-top: 0;
     margin-bottom: $spacing-sm;
   }
+
   .challenge-stats {
     font-family: $font-family-base;
     color: $text-muted;
     font-size: 1rem;
     display: flex;
     justify-content: center;
-    gap: $spacing-lg;
+    flex-wrap: wrap;
+    gap: $spacing-sm $spacing-lg; // Row and column gap
+
+    .stat-item {
+      // Styling for individual stat items if needed
+    }
     .score {
       font-weight: bold;
-      color: $accent-tertiary; // Example for score color
+      color: $accent-tertiary; // Use a distinct color for the score
     }
   }
 }
 
-.loading-state, .error-state, .no-songs-message, .challenge-complete-message {
+// Loading, error, and message states
+.loading-state,
+.error-state,
+.no-songs-message,
+.challenge-complete-message {
+  @extend .card-style; // Use card styling
   text-align: center;
-  padding: $spacing-xl; // Make them stand out
+  padding: $spacing-xl $spacing-lg;
   font-size: 1.1rem;
+  color: $text-muted;
 }
-.error-state { color: $accent-primary; } // Or a specific error color
+
+.error-state p {
+  color: $error-color; // Use your defined error color
+  font-weight: 500;
+}
+
+.challenge-complete-message {
+  h3 {
+    font-family: $font-family-headings;
+    color: $accent-primary;
+    margin-top: 0;
+    margin-bottom: $spacing-md;
+  }
+  p {
+    font-size: 1.2rem; // Make final message a bit larger
+    strong {
+      color: $accent-tertiary;
+    }
+  }
+}
 
 .start-challenge-container {
-    text-align: center;
-    margin: $spacing-xl 0;
+  text-align: center;
+  margin: $spacing-xl 0;
 }
 
+// Active game area
 .active-game-area {
   display: flex;
   flex-direction: column;
-  gap: $spacing-lg;
+  gap: $spacing-lg; // Space between the clue, audio, guess, and feedback cards
 }
 
+// Clue Area (Album Art)
 .clue-area {
-  h3 { // For dev hint title
+  @extend .card-style;
+  display: flex;
+  flex-direction: column; // To stack dev hints and art container
+  align-items: center;
+  gap: $spacing-sm;
+
+  h3 { // For "Clues (Dev Only)" title
     font-size: 0.9rem;
     color: $text-muted;
-    text-align: center;
-    margin-bottom: $spacing-sm;
+    margin-bottom: $spacing-xs;
+    font-weight: normal;
   }
-  p { // For dev hints
+  p { // For dev hints text
     font-size: 0.85rem;
-    text-align: center;
     color: $text-muted;
+    margin: 2px 0;
   }
+
+  .album-art-wrapper {
+    display: inline-block;
+    width: 250px; // Or your desired size
+    height: 250px;
+    position: relative;
+    transition: filter 0.7s ease-in-out; // Blur transition on the wrapper
+  }
+
   .album-art-container {
+    width: 100%;
+    height: 100%;
+    background-color: color.adjust($secondary-bg, $lightness: 5%); // Placeholder background
+    border-radius: $border-radius-md;
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 250px; // Adjust as needed
-    background-color: color.adjust($secondary-bg, $lightness: 3%); // Darkens by 3%
-    border-radius: $border-radius-md;
-    padding: $spacing-sm;
+    overflow: hidden; // If image is larger than container
 
-    img {
+    .album-art-image {
       display: block;
       max-width: 100%;
-      width: 220px; // Adjust size
-      height: 220px;
-      object-fit: contain;
-      border-radius: $border-radius-sm;
-      box-shadow: $box-shadow-medium;
+      max-height: 100%;
+      object-fit: contain; // Or 'cover'
+      border-radius: $border-radius-sm; // Slight rounding if image distinct from container
+      
+      opacity: 0; // Initially hidden
+      transition: opacity 0.4s ease-in-out; // Fade-in transition
+
+      &.loaded {
+        opacity: 1; // Fade in when loaded
+      }
     }
+
     .no-album-art {
-      width: 220px;
-      height: 220px;
+      width: 100%;
+      height: 100%;
       display: flex;
       justify-content: center;
       align-items: center;
-      font-size: 3rem;
+      font-size: 1rem;
       color: $text-muted;
-      border: 2px dashed $text-muted;
-      border-radius: $border-radius-sm;
+      span { // For the '?' or "Loading Art..."
+        font-size: 3rem;
+        &.loading-text {
+          font-size: 1rem;
+          font-style: italic;
+        }
+      }
     }
   }
 }
 
+// Audio Controls Area
 .audio-controls-area {
+  @extend .card-style;
   text-align: center;
+
   h4 {
     font-family: $font-family-headings;
-    margin-bottom: $spacing-sm;
-    font-size: 1.2rem;
+    margin-top: 0;
+    margin-bottom: $spacing-xs;
+    font-size: 1.1rem;
     color: $text-color;
   }
-  p {
+  p { // For "Level X: Y seconds"
     color: $text-muted;
     font-size: 0.9rem;
+    margin-top: 0;
     margin-bottom: $spacing-md;
   }
   .button-group {
     display: flex;
     justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
     gap: $spacing-md;
   }
 }
 
+// Guess Input Area
 .guess-input-area {
+  @extend .card-style;
   text-align: center;
   h4 {
     font-family: $font-family-headings;
+    margin-top: 0;
     margin-bottom: $spacing-md;
     font-size: 1.2rem;
     color: $text-color;
   }
+  // app-guess-input will have its own internal styling for input/suggestions
+  // You might add margin or padding around <app-guess-input> if needed here
 }
 
+// Feedback Area - Relies on app-feedback-display's internal styling mostly
+// You might add margin around it if needed.
+.feedback-area {
+  margin-top: 0; // Card already has margin-bottom
+}
+
+
+// Developer Controls Area
 .dev-controls {
-    margin-top: $spacing-md;
+    margin-top: $spacing-md; // Use theme variable
     text-align: center;
 }
 
-// General Button Styles (you might have these globally or in theme-variables)
-.button-cta {
-  padding: 12px 25px;
-  background-color: $accent-primary;
-  color: $white;
+// --- Button Styles (can be global or scoped) ---
+// These should match/extend your global button styles for consistency
+// Using theme variables from your theme-variables.scss
+
+.button-cta, .button-secondary, .button-dev {
+  padding: 10px 18px;
   border: none;
   border-radius: $border-radius-md;
   font-family: $font-family-base;
   font-weight: 600;
-  font-size: 1rem;
-  box-shadow: $box-shadow-soft;
+  font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  &:hover {
-    background-color: color.adjust($accent-primary, $lightness: -7%);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+
+  &:disabled {
+    background-color: color.adjust($text-muted, $lightness: -30%) !important; // More pronounced disabled state
+    color: color.adjust($text-muted, $lightness: -10%) !important;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+}
+
+.button-cta { // Primary action button
+  background-color: $accent-primary;
+  color: $white;
+  box-shadow: $box-shadow-soft;
+
+  &:hover:not(:disabled) {
+    background-color: color.adjust($accent-primary, $lightness: -8%);
     box-shadow: $box-shadow-medium;
     transform: translateY(-2px);
   }
-  &:disabled {
-    background-color: color.adjust($text-muted, $lightness: -25%); // Darkens by -25%
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-  }
 }
 
-.button-secondary {
-  @extend .button-cta; // Inherit base styles
-  background-color: $accent-secondary;
-  color: $text-color; // Or $white if contrast is better
-  &:hover {
-    background-color: color.adjust($accent-secondary, $lightness: -10%);
-  }
-}
-
-.button-dev { // Simple style for dev buttons
-    @extend .button-cta;
-    background-color: $text-muted;
-    font-size: 0.8rem;
-    padding: 5px 10px;
-}
-
-.large-button {
+.button-cta.large-button { // For "Start Challenge"
     padding: 15px 40px;
     font-size: 1.2rem;
+}
+
+
+.button-secondary { // For skip, or less critical actions
+  background-color: $accent-secondary;
+  color: color.adjust($text-color, $lightness: -15%); // Darker text for yellow bg
+  box-shadow: $box-shadow-soft;
+
+  &:hover:not(:disabled) {
+    background-color: color.adjust($accent-secondary, $lightness: -10%);
+    box-shadow: $box-shadow-medium;
+    transform: translateY(-2px);
+  }
+}
+
+.button-dev { // For developer-only buttons
+  background-color: $text-muted;
+  color: $white;
+  font-size: 0.8rem;
+  padding: 6px 12px;
+  text-transform: none;
+  letter-spacing: normal;
+
+  &:hover:not(:disabled) {
+    background-color: color.adjust($text-muted, $lightness: 10%);
+  }
 }

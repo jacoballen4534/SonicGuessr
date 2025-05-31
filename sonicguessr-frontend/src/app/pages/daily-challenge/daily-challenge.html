@@ -37,12 +37,24 @@
       <h3 *ngIf="isDev">Clues (Dev Only)</h3>
       <p *ngIf="isDev"><strong>Title Hint:</strong> {{ activeSong.title }}</p>
       <p *ngIf="isDev"><strong>Artist Hint:</strong> {{ activeSong.artist }}</p>
-      <div class="album-art-container">
-        <img *ngIf="activeSong.album_art_url" [src]="activeSong.album_art_url" alt="Album art for the song" />
-        <div *ngIf="!activeSong.album_art_url" class="no-album-art">
-            <span>?</span>
+      <div class="album-art-wrapper" 
+        [style.filter]="albumArtStyle">
+        <div class="album-art-container">
+        <img *ngIf="activeSong && activeSong.album_art_url" 
+            [src]="activeSong.album_art_url" 
+            alt="Album art for the song" 
+            class="album-art-image"
+            [class.loaded]="!isAlbumArtLoading"
+            (load)="onAlbumArtLoaded()"
+            (error)="onAlbumArtLoaded()" />
+        
+        <div *ngIf="activeSong && (!activeSong.album_art_url || isAlbumArtLoading)" class="no-album-art">
+            <span *ngIf="isAlbumArtLoading">Loading Art...</span>
+            <span *ngIf="!isAlbumArtLoading && !activeSong.album_art_url">?</span>
         </div>
       </div>
+    </div>
+
     </section>
 
     <section class="audio-controls-area card-style">

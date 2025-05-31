@@ -1,0 +1,36 @@
+// src/app/components/layout/footer/footer.scss
+@use '../../../typography/theme-variables.scss' as *; // Adjust path to your theme variables
+@use 'sass:color'; // For color functions if needed
+
+.app-footer {
+  background-color: color.adjust($primary-bg, $lightness: 5%); // A slightly darker shade than the main background, or use $secondary-bg
+  color: $text-muted;
+  padding: $spacing-md $spacing-lg; // e.g., 16px 24px
+  text-align: center;
+  font-size: 0.85em; // Slightly smaller text
+  border-top: 1px solid color.adjust($primary-bg, $lightness: 10%); // A subtle top border
+
+  .footer-content {
+    max-width: 900px; // Consistent max-width for content
+    margin: 0 auto;
+
+    p {
+      margin: 0;
+      line-height: 1.5;
+    }
+
+    .footer-nav { // Optional styling for footer links
+      margin-top: $spacing-sm;
+      a {
+        color: $text-muted;
+        text-decoration: none;
+        margin: 0 $spacing-xs;
+
+        &:hover {
+          color: $accent-primary;
+          text-decoration: underline;
+        }
+      }
+    }
+  }
+}
