@@ -1,6 +1,6 @@
 // src/app/pages/daily-challenge/daily-challenge.ts
-import { Component, OnInit, inject, ViewChild, AfterViewInit } from '@angular/core'; // Added ViewChild, AfterViewInit
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, inject, ViewChild, AfterViewInit, PLATFORM_ID } from '@angular/core'; // Added ViewChild, AfterViewInit
+import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { ChallengeService, GuessPayload, GuessResponse } from '../../services/challenge';
 import { DailyChallengeSong } from '../../models/daily-song.model';
 import { AudioPlayer } from '../../components/audio-player/audio-player'; // Assuming this is its class name
@@ -15,6 +15,8 @@ const snippetLevelsData = [
   { id: 5, start: 0, end: 15, durationText: '15 seconds' },  // Level 5
   { id: 6, start: 0, end: 30, durationText: '30 seconds' },  // Level 6
 ];
+
+const STORAGE_KEY_PREFIX = 'sonicGuessrDailyState_';
 
 @Component({
   selector: 'app-daily-challenge-page',
@@ -34,11 +36,13 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
   dailySongs: DailyChallengeSong[] = [];
   isLoading = true;
   error: string | null = null;
+  private proceedToNextSongOnLoad: boolean = false; // New flag
 
   feedbackDisplay_message: string = '';
   feedbackDisplay_type: 'correct' | 'incorrect' | 'info' | null = null;
   feedbackDisplay_points: number = 0;
   feedbackDisplay_correctAnswer: { title: string, artist: string } | null = null;
+  private todayDateString: string = ''; // To store YYYY-MM-DD
 
 
   // Property to track total score for the daily challenge
@@ -58,7 +62,14 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
   // Get a reference to the AudioPlayerComponent instance
   @ViewChild(AudioPlayer) audioPlayerRef!: AudioPlayer;
 
+  private platformId = inject(PLATFORM_ID); // Inject PLATFORM_ID using inject()
+
+  getTodayDateString() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
   ngOnInit(): void {
+    this.todayDateString = this.getTodayDateString()
     console.log('DailyChallenge component initialized, fetching songs...');
     this.challengeService.getDailySongs().subscribe({
       next: (songs) => {
@@ -66,7 +77,7 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
         this.isLoading = false;
         console.log('Daily songs fetched:', this.dailySongs);
         if (this.dailySongs.length > 0) {
-          this.startChallengeWithFirstSong(); // Or wait for user action
+          this.loadGameStateOrDefault(); // Load saved state or start fresh
         }
       },
       error: (err) => {
@@ -82,6 +93,85 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
     // You can log it to ensure it's being picked up:
     // console.log('Audio Player Ref:', this.audioPlayerRef);
   }
+
+  private getStorageKey(): string {
+    return `${STORAGE_KEY_PREFIX}${this.todayDateString}`;
+  }
+
+  private loadGameStateOrDefault(): void {
+    if (!isPlatformBrowser(this.platformId)) return; // Ensure save only on browser
+
+    const savedStateString = localStorage.getItem(this.getStorageKey());
+    if (savedStateString) {
+      try {
+        const savedState = JSON.parse(savedStateString);
+        // Basic validation: ensure it has expected properties
+        if (savedState && typeof savedState.activeSongIndex === 'number' &&
+            typeof savedState.currentSnippetLevelIndex === 'number' &&
+            typeof savedState.totalDailyScore === 'number') {
+                
+          this.activeSongIndex = savedState.activeSongIndex;
+          this.currentSnippetLevelIndex = savedState.currentSnippetLevelIndex || 0;
+          this.totalDailyScore = savedState.totalDailyScore || 0;
+          this.proceedToNextSongOnLoad = savedState.proceedToNextSongOnLoad || false; // <<< LOAD THE FLAG
+
+          console.log('Loaded game state:', savedState);
+
+          if (this.proceedToNextSongOnLoad) {
+            console.log('Proceeding to next song due to saved flag.');
+            this.proceedToNextSongOnLoad = false; // Reset flag for current session
+            // Save state immediately to persist the reset flag, before nextSong might save again
+            this.saveGameState(); 
+            this.nextSong(); // Call nextSong to handle the transition
+          } else if (this.activeSongIndex === -1 && this.dailySongs.length > 0) { 
+            // Indicates challenge was previously completed fully
+            this.feedbackDisplay_message = `You have completed all songs for today! Your total score: ${this.totalDailyScore}`;
+            this.feedbackDisplay_type = 'info';
+            this.activeSong = null;
+            this.playbackVideoId = null;
+          } else if (this.dailySongs && this.activeSongIndex >= 0 && this.activeSongIndex < this.dailySongs.length) {
+            this.activeSong = this.dailySongs[this.activeSongIndex];
+            this.playCurrentSnippet(); // This will use the loaded currentSnippetLevelIndex & save state
+          } else {
+            this.startChallengeWithFirstSong(); // Fallback
+          }
+          return; // Exit after loading saved state
+        } else {
+          console.warn('Invalid saved game state structure found. Starting fresh.');
+          localStorage.removeItem(this.getStorageKey()); // Clear invalid state
+        }
+      } catch (e) {
+        console.error('Error parsing saved game state. Starting fresh.', e);
+        localStorage.removeItem(this.getStorageKey()); // Clear corrupted state
+      }
+    }
+    // No valid saved state, start fresh with the first song
+    this.startChallengeWithFirstSong();
+  }
+
+  private saveGameState(): void {
+    if (!isPlatformBrowser(this.platformId)) return;
+
+    // Logic to clear storage if challenge is truly complete
+    if (this.dailySongs.length > 0 && this.activeSong === null && 
+        this.activeSongIndex === -1 && /* some condition indicating all songs done */
+        this.feedbackDisplay_message.includes("completed all songs")) {
+      console.log('Challenge fully completed, clearing saved game state.');
+      localStorage.removeItem(this.getStorageKey());
+      return;
+    }
+
+    const stateToSave = {
+      activeSongIndex: this.activeSongIndex,
+      currentSnippetLevelIndex: this.currentSnippetLevelIndex,
+      totalDailyScore: this.totalDailyScore,
+      proceedToNextSongOnLoad: this.proceedToNextSongOnLoad // <<< SAVE THE FLAG
+      // Potentially save feedback messages if they should persist briefly after reload
+    };
+    console.log('Saving game state:', stateToSave, 'for key:', this.getStorageKey());
+    localStorage.setItem(this.getStorageKey(), JSON.stringify(stateToSave));
+  }
+
 
   startChallengeWithFirstSong(): void {
     this.setActiveSong(0);
@@ -102,13 +192,12 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
 
   handleUserGuess(guess: string): void {
     if (!this.activeSong) {
-      this.feedbackDisplay_message = "Error: No active song selected to guess against.";
+      this.feedbackDisplay_message = "Error: No active song selected.";
       this.feedbackDisplay_type = 'incorrect';
-      console.error("handleUserGuess called with no active song.");
       return;
     }
 
-    this.feedbackDisplay_message = 'Submitting your guess...';
+    this.feedbackDisplay_message = 'Submitting guess...';
     this.feedbackDisplay_type = 'info';
     this.feedbackDisplay_points = 0;
     this.feedbackDisplay_correctAnswer = null;
@@ -116,71 +205,64 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
     const payload: GuessPayload = {
       daily_challenge_song_id: this.activeSong.id,
       guess: guess,
-      currentLevel: this.currentSnippetLevelIndex + 1 // Assuming backend expects 1-based
+      currentLevel: this.currentSnippetLevelIndex + 1
     };
-
-    console.log('Submitting guess with payload:', payload);
 
     this.challengeService.submitGuess(payload).subscribe({
       next: (response: GuessResponse) => {
-        console.log('Backend Guess Response FULL:', JSON.stringify(response, null, 2));
-        this.feedbackDisplay_message = response.message; // Initial message from backend
+        this.feedbackDisplay_message = response.message;
+        let songIsOver = false; // Flag to determine if current song is ending
 
         if (response.correct) {
           this.feedbackDisplay_type = 'correct';
           this.feedbackDisplay_points = response.pointsAwarded || 0;
           this.totalDailyScore += this.feedbackDisplay_points;
-          
-          console.log(`Correct! You scored ${this.feedbackDisplay_points}. Total score: ${this.totalDailyScore}`);
-          
-          setTimeout(() => {
-            this.feedbackDisplay_message = `Correct! "${response.songTitle || this.activeSong?.title}". Moving to the next song...`;
-            this.nextSong();
-          }, 2500); // Delay before moving to next song
-
+          songIsOver = true;
         } else { // Incorrect guess
           this.feedbackDisplay_type = 'incorrect';
-          
-          if (response.gameOverForSong) {
-            // Backend says game over for this song (e.g., max attempts reached server-side)
-            this.feedbackDisplay_correctAnswer = { title: response.songTitle!, artist: response.artist! };
-            this.feedbackDisplay_message = response.message; // Use backend's game over message
-            console.log(`Incorrect. Game over for this song (from backend). It was: ${response.songTitle}`);
-            setTimeout(() => {
-              this.nextSong();
-            }, 4000);
-          } else { 
-            // Incorrect, but backend implies more attempts might be possible (e.g., response.nextLevel is present)
-            // Now, check if we have more snippet levels defined on the client-side.
-            if (this.currentSnippetLevelIndex < this.SNIPPET_LEVELS.length - 1) {
-              this.feedbackDisplay_message = response.message + " Playing a longer snippet..."; // Update feedback
-              console.log('Incorrect guess. Automatically playing next snippet level.');
-              // Optional: short delay for user to read feedback before new snippet plays
-              setTimeout(() => {
-                this.playNextSnippetLevel(); // This method increments level and plays
-              }, 1500); // 1.5 second delay, adjust as needed
-            } else {
-              // Client-side has no more defined snippet levels, even if backend didn't explicitly say "gameOverForSong"
-              // Treat as game over for this song from client's perspective.
-              console.log('Incorrect guess: No more client-side snippet levels. Treating as game over for song.');
-              this.feedbackDisplay_correctAnswer = this.activeSong ? { title: this.activeSong.title, artist: this.activeSong.artist } : null;
-              this.feedbackDisplay_message = response.message + ` The song was: ${this.activeSong?.title || 'Unknown'}. Moving to the next song...`;
-              setTimeout(() => {
-                this.nextSong();
-              }, 4000);
+          if (response.gameOverForSong || (this.currentSnippetLevelIndex >= this.SNIPPET_LEVELS.length - 1)) {
+            songIsOver = true;
+            this.feedbackDisplay_correctAnswer = { 
+              title: response.songTitle || this.activeSong?.title || 'Unknown', 
+              artist: response.artist || this.activeSong?.artist || 'Unknown' 
+            };
+            if (!response.gameOverForSong) { // Client determined game over
+                this.feedbackDisplay_message = response.message + ` That was the last snippet. The song was: ${this.activeSong?.title || 'Unknown'}.`;
+            }
+          } else { // Incorrect, but more snippet levels are available
+            this.feedbackDisplay_message = response.message + " Preparing next snippet...";
+            if (this.advanceToNextSnippetLevel()) { // Advances index
+              this.saveGameState(); // Save new snippet level
+              setTimeout(() => { this.playCurrentSnippet(); }, 1500);
+            } else { 
+              // Should not happen if advanceToNextSnippetLevel logic is sound with outer check
+              // but as a fallback, treat as game over.
+              songIsOver = true; 
+              this.feedbackDisplay_message = "No more snippets. Game over for this song.";
             }
           }
         }
+
+        // If the song is determined to be over (correct guess or game over from incorrect)
+        if (songIsOver) {
+          this.proceedToNextSongOnLoad = true; // <<< SET FLAG
+          this.saveGameState();                // <<< SAVE STATE (with flag and final score for this song)
+
+          const delay = response.correct ? 2500 : 4000;
+          setTimeout(() => {
+            // this.proceedToNextSongOnLoad = false; // Reset before calling nextSong
+            // this.saveGameState(); // Save the reset flag
+            // No, nextSong() itself should handle resetting this flag for the *new* state it establishes
+            this.nextSong();
+          }, delay);
+        }
+        // If !songIsOver and it was an incorrect guess with next snippet, that path already saved and has its own timeout
       },
       error: (err) => {
-        console.error('Error submitting guess:', err);
         this.feedbackDisplay_type = 'incorrect';
-        this.feedbackDisplay_points = 0;
-        this.feedbackDisplay_correctAnswer = null;
-        this.feedbackDisplay_message = err.error?.message || 'An error occurred while submitting your guess. Please try again.';
-        if (err.status === 401) {
-            this.feedbackDisplay_message = "You need to be logged in to submit a guess. Please log in.";
-        }
+        this.feedbackDisplay_message = err.error?.message || 'Failed to submit guess.';
+        // Potentially save state here if relevant, e.g., an attempt was made.
+        // For now, just showing error.
       }
     });
   }
@@ -210,56 +292,65 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
     }
   }
 
-  // Ensure your nextSong method is also using the `feedbackDisplay_` prefixed variables
-  // and resets relevant states for the new song.
+  // (getStorageKey, loadGameStateOrDefault, nextSong, etc. remain crucial)
+  // Ensure nextSong also calls saveGameState or appropriately clears it when challenge is over.
   nextSong(): void {
-    // Reset feedback state for the new song
+    this.proceedToNextSongOnLoad = false; // <<< RESET FLAG for the state of the upcoming song
+
+    // Reset other feedback for the new song attempt
     this.feedbackDisplay_message = '';
     this.feedbackDisplay_type = null;
     this.feedbackDisplay_points = 0;
     this.feedbackDisplay_correctAnswer = null;
-  
+
+    let nextSongFound = false;
     if (this.activeSongIndex < this.dailySongs.length - 1) {
-      this.setActiveSong(this.activeSongIndex + 1); // This will set new activeSong, reset snippetLevelIndex, and call playCurrentSnippet
+      this.setActiveSong(this.activeSongIndex + 1); // This calls playCurrentSnippet -> saveGameState
+      nextSongFound = true;
     } else {
+      // All songs completed
       console.log('End of daily challenge songs.');
       this.feedbackDisplay_message = `You have completed all songs for today! Your total score: ${this.totalDailyScore}`;
       this.feedbackDisplay_type = 'info'; 
       this.activeSong = null; 
+      this.activeSongIndex = -1; // Indicate challenge is done
+      this.currentSnippetLevelIndex = 0;
       this.playbackVideoId = null; 
-      // Maybe also clear currentSnippetLevelIndex or set activeSongIndex to an invalid state
-      this.currentSnippetLevelIndex = 0; 
-      this.activeSongIndex = -1; // Or some indicator that challenge is over
+      // Final save, which might include proceedToNextSongOnLoad: false and activeSongIndex: -1
+      // Or, the saveGameState has logic to clear storage upon true completion.
+      this.saveGameState(); 
     }
   }
-  
-    skipToNextSnippet(): void {
+
+  skipToNextSnippet(): void {
     if (!this.activeSong) {
       this.feedbackDisplay_message = 'No active song to skip snippet for.';
       this.feedbackDisplay_type = 'info';
-      console.warn('Skip action: No active song.');
       return;
     }
-
-    // Check if there's a next snippet level available based on client-side SNIPPET_LEVELS
-    if (this.currentSnippetLevelIndex < this.SNIPPET_LEVELS.length - 1) {
-      this.currentSnippetLevelIndex++; // Advance to the next snippet level
-
-      // Update feedback and play the new current snippet
-      this.feedbackDisplay_message = `Playing next snippet (level ${this.currentSnippetLevelIndex + 1}: ${this.SNIPPET_LEVELS[this.currentSnippetLevelIndex].durationText})...`;
+    if (this.advanceToNextSnippetLevel()) { // Advances index
+      this.feedbackDisplay_message = `Playing snippet level ${this.currentSnippetLevelIndex + 1} (${this.SNIPPET_LEVELS[this.currentSnippetLevelIndex].durationText})...`;
       this.feedbackDisplay_type = 'info';
-      this.feedbackDisplay_points = 0; // No points for skipping
-      this.feedbackDisplay_correctAnswer = null; // Clear any previous correct answer display
-
-      console.log(`User skipped to snippet level <span class="math-inline">\{this\.currentSnippetLevelIndex \+ 1\} for song "</span>{this.activeSong.title}"`);
-      this.playCurrentSnippet(); // This method already sets up and plays the current level
+      // playCurrentSnippet will be called, which saves state.
+      // No, playCurrentSnippet is NOT automatically called by advanceToNextSnippetLevel anymore.
+      this.playCurrentSnippet(); // Explicitly call to play and save the new state
     } else {
       this.feedbackDisplay_message = 'You are already at the longest snippet for this song!';
       this.feedbackDisplay_type = 'info';
-      console.log('Skip action: Already at the last snippet level.');
     }
   }
 
+  // playNextSnippetLevel is now primarily for explicit UI calls if needed, or can be removed if skip and auto-advance cover all cases.
+  // For auto-advance after wrong guess, we now use advanceToNextSnippetLevel() then playCurrentSnippet().
+  // If you still want a button for "Play Next Snippet", it can call this:
+  triggerPlayNextSnippetLevelButton(): void {
+      if(this.advanceToNextSnippetLevel()){
+          this.playCurrentSnippet();
+      } else {
+          this.feedbackDisplay_message = 'Already at the last snippet level!';
+          this.feedbackDisplay_type = 'info';
+      }
+  }
 
   playCurrentSnippet(): void {
     if (this.activeSong && this.SNIPPET_LEVELS[this.currentSnippetLevelIndex]) {
@@ -269,8 +360,7 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
       this.playbackStartSeconds = levelConfig.start;
       this.playbackEndSeconds = levelConfig.end;
       
-      console.log(`Setting up to play snippet for "${this.activeSong.title}", Level ${levelConfig.id} (${levelConfig.durationText})`);
-      console.log(`VideoID: ${this.playbackVideoId}, Start: ${this.playbackStartSeconds}, End: ${this.playbackEndSeconds}`);
+      console.log(`Prepared to play snippet for "${this.activeSong.title}", Level ${levelConfig.id} (${levelConfig.durationText})`);
 
       // The <app-audio-player> in the template will get these new input values.
       // Its ngOnChanges should handle loading/re-loading the video.
@@ -284,10 +374,21 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
           console.error('AudioPlayer reference not available to play snippet.');
         }
       }, 0);
+      this.saveGameState(); // Save state after preparing a new snippet
 
     } else {
       console.warn('No active song or current snippet level configuration to play.');
       this.playbackVideoId = null;
     }
   }
+
+  private advanceToNextSnippetLevel(): boolean {
+    if (this.activeSong && this.currentSnippetLevelIndex < this.SNIPPET_LEVELS.length - 1) {
+      this.currentSnippetLevelIndex++;
+      console.log(`Advanced to snippet level index: ${this.currentSnippetLevelIndex}`);
+      return true;
+    }
+    return false;
+  }
+
 }

@@ -339,9 +339,9 @@ router.get('/leaderboard/daily', async (req, res) => {
             const currentUserId = req.user.id;
             currentUserEntry = allEntries.find(entry => entry.user_id === currentUserId) || null;
             if (currentUserEntry) {
-                console.log(`[Leaderboard] Current user (ID: ${currentUserId}) found in ranks: Rank ${currentUserEntry.rank}, Score ${currentUserEntry.total_score}`);
+                // console.log(`[Leaderboard] Current user (ID: ${currentUserId}) found in ranks: Rank ${currentUserEntry.rank}, Score ${currentUserEntry.total_score}`);
             } else {
-                 console.log(`[Leaderboard] Current user (ID: ${currentUserId}) not found in today's scores.`);
+                //  console.log(`[Leaderboard] Current user (ID: ${currentUserId}) not found in today's scores.`);
                  // Optionally, you could fetch their score even if it's 0 or they haven't played,
                  // but for now, if they aren't in allEntries, they have no score for today.
             }
