@@ -122,17 +122,27 @@ export class ProfileEdit implements OnInit, OnDestroy { // Implement OnDestroy
 
 
     this.updateSubscription = this.authService.updateUserProfile(payload).subscribe({
-      next: (updatedUser) => {
+      next: (updatedUserFromService: User | null) => { // <<< updatedUserFromService is User | null
         this.isLoading = false;
-        this.feedbackDisplay_message = 'Profile updated successfully!';
-        this.feedbackDisplay_type = 'correct'; // Use 'correct' for success
-        console.log('Profile updated by service, new user state:', updatedUser);
-        this.profileForm.markAsPristine(); // Reset dirty state after successful save
+        if (updatedUserFromService) { // Check if we got a valid user object back
+          this.feedbackDisplay_message = 'Profile updated successfully!';
+          this.feedbackDisplay_type = 'correct';
+          console.log('Profile updated, new user state from service:', updatedUserFromService);
+          this.profileForm.markAsPristine(); // Reset dirty state
+          // The AuthService already updated its currentUserSubject, so currentUser$ subscribers will get new data.
+          // No need to manually update this.currentUser here if it's subscribed to currentUser$.
+        } else {
+          // This case means the update call might have "succeeded" at HTTP level,
+          // but the returned/normalized user data was not valid.
+          this.feedbackDisplay_message = 'Profile update processed, but user data could not be fully confirmed. Please refresh or check your details.';
+          this.feedbackDisplay_type = 'incorrect'; // Or 'info'
+          console.warn('Profile update seemed to succeed, but normalized user data was null.');
+        }
       },
       error: (err) => {
         this.isLoading = false;
         this.feedbackDisplay_message = err.error?.error || 'Failed to update profile. Username might be taken or URL invalid.';
-        this.feedbackDisplay_type = 'incorrect'; // Use 'incorrect' for error
+        this.feedbackDisplay_type = 'incorrect';
         console.error('Profile update error:', err);
       }
     });

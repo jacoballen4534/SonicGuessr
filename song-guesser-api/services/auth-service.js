@@ -6,7 +6,6 @@
 
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
-// `db` will be obtained via getDb()
 const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALLBACK_URL } = require('../config');
 
 function initializePassport(app, getDb) { // Accept getDb

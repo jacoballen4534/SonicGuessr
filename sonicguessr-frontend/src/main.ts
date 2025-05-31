@@ -4,6 +4,7 @@ import { ApplicationRef } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { App } from './app/app'; // Ensure this path and class name are correct
 import { appConfig } from './app/app.config'; // Ensure this path is correct
+import { config } from './app/app.config.server'; // Ensure this path is correct
 
 // Define a function that performs the bootstrap and returns the Promise<ApplicationRef>
 // This function will be our default export for the server, and can also be called on the client.
