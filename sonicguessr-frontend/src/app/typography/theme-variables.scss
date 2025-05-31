@@ -1,0 +1,31 @@
+// Example path: src/app/typography/theme-variables.scss
+// Or: src/app/styles/theme-variables.scss
+
+// Color Palette
+$primary-bg: #FFFBF5;
+$secondary-bg: #F7F3E9;
+$text-color: #4A4A4A;
+$text-muted: #777777;
+$accent-primary: #FF7A5A;     // Coral/Orange
+$accent-secondary: #FFD166;   // Yellow
+$accent-tertiary: #06D6A0;   // Teal/Mint
+$white: #FFFFFF;
+
+// Typography
+$font-family-base: 'Nunito', sans-serif;
+$font-family-headings: 'Poppins', sans-serif;
+
+// Borders & Shadows
+$border-radius-sm: 5px;
+$border-radius-md: 10px;
+$border-radius-lg: 15px;
+$box-shadow-soft: 0 4px 15px rgba(0, 0, 0, 0.07);
+$box-shadow-medium: 0 6px 20px rgba(0, 0, 0, 0.1);
+
+// Spacing Units (Example values, adjust as needed)
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 16px;
+$spacing-lg: 24px;
+$spacing-xl: 32px;
+$spacing-xxl: 48px;

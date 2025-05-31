@@ -1,1 +1,29 @@
-<p>home works!</p>
+<div class="home-page-container">
+  <section class="home-hero">
+    <h1>Ready to Test Your Ears?</h1>
+    <p class="hero-tagline">
+      Jump into today's SonicGuessr challenge and see how many songs you can name!
+    </p>
+    <button class="button-cta play-daily-button" (click)="navigateToDailyChallenge()">
+      Play Today's Challenge
+    </button>
+    <div class="secondary-actions">
+        <a routerLink="/leaderboard" class="hero-secondary-link">View Leaderboard</a>
+    </div>
+  </section>
+
+  <section class="home-info-widgets" *ngIf="showExtraInfo"> <div class="info-widget">
+      <h3>Quick Stats</h3>
+      <p>A fresh set of {{ dailySongCount }} songs awaits you!</p> 
+      <a routerLink="/leaderboard">See who's winning!</a>
+    </div>
+    <div class="info-widget">
+      <h3>How to Play</h3>
+      <ol>
+        <li>Listen to short audio snippets.</li>
+        <li>Guess the song title quickly.</li>
+        <li>Climb the daily leaderboard!</li>
+      </ol>
+    </div>
+  </section>
+</div>

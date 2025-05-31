@@ -1,0 +1,125 @@
+// src/app/pages/home/home.scss
+@use 'sass:color'; 
+
+// Use @use to load variables and make them available globally in this file
+// IMPORTANT: Adjust the path to correctly point to your theme-variables.scss file!
+// Example paths depending on your structure:
+// If theme-variables.scss is in src/app/typography/
+@use '../../typography/theme-variables' as *; 
+// If theme-variables.scss is in src/app/styles/
+// @use '../../styles/theme-variables' as *; 
+// If theme-variables.scss is in src/styles/ (outside app folder)
+// @use '../../../styles/theme-variables' as *; 
+
+.home-page-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: $spacing-xl; // Now $spacing-xl, $spacing-lg, $spacing-md should be recognized
+  padding: $spacing-lg $spacing-md; 
+}
+
+.home-hero {
+  text-align: center;
+  max-width: 700px;
+
+  .hero-image {
+    max-width: 150px;
+    margin-bottom: $spacing-md; // Use defined spacing
+  }
+
+  h1 {
+    font-family: $font-family-headings;
+    font-size: 2.8rem;
+    color: $accent-primary;
+    margin-bottom: $spacing-sm; // Use defined spacing
+    font-weight: 700;
+  }
+
+  .hero-tagline {
+    font-family: $font-family-base;
+    font-size: 1.1rem;
+    color: $text-muted;
+    margin-bottom: $spacing-lg; // Use defined spacing
+    line-height: 1.6;
+  }
+
+  .play-daily-button {
+    // Assumes you have a general .button-cta mixin or styles elsewhere using theme vars
+    // For now, just an example of using variables:
+    background-color: $accent-primary;
+    color: $white;
+    padding: $spacing-md $spacing-xl;
+    font-size: 1.1rem;
+    border-radius: $border-radius-md;
+    border: none;
+    cursor: pointer;
+    // ... other button styles ...
+  }
+
+  .secondary-actions {
+      margin-top: $spacing-md;
+      .hero-secondary-link {
+          color: $accent-primary;
+          text-decoration: none;
+          font-weight: 600;
+          &:hover {
+              text-decoration: underline;
+              color: color.adjust($accent-primary, $lightness: -10%); // Darkens by 10%
+          }
+      }
+  }
+}
+
+.home-info-widgets {
+  display: flex;
+  gap: $spacing-lg; // Use defined spacing
+  justify-content: center;
+  flex-wrap: wrap;
+  width: 100%;
+  max-width: 900px;
+
+  .info-widget {
+    background-color: $secondary-bg;
+    padding: $spacing-lg; // Use defined spacing
+    border-radius: $border-radius-lg;
+    box-shadow: $box-shadow-soft;
+    flex: 1;
+    min-width: 280px;
+    text-align: left;
+
+    h3 {
+      font-family: $font-family-headings;
+      color: $accent-primary;
+      margin-top: 0;
+      margin-bottom: $spacing-md;
+      font-size: 1.4rem;
+    }
+
+    p, ol, li {
+      font-family: $font-family-base;
+      color: $text-color;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    ol {
+        padding-left: $spacing-md;
+        li {
+            margin-bottom: $spacing-sm;
+        }
+    }
+
+    a {
+      color: $accent-primary;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-block;
+      margin-top: $spacing-md;
+      &:hover {
+        text-decoration: underline;
+        color: color.adjust($accent-primary, $lightness: -10%); // Darkens by 10%
+      }
+    }
+  }
+}

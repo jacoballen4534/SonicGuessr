@@ -8,12 +8,13 @@ import { GuessInput } from '../../components/guess-input/guess-input'; // Adjust
 import { FeedbackDisplay } from '../../components/feedback-display/feedback-display';
 
 const snippetLevelsData = [
-  { id: 1, start: 0, end: 0.3, durationText: '0.3 seconds' },  // Level 1
-  { id: 2, start: 0, end: 1, durationText: '1 seconds' },  // Level 2
-  { id: 3, start: 0, end: 3, durationText: '3 seconds' }, // Level 3
-  { id: 4, start: 0, end: 8, durationText: '8 seconds' },  // Level 4
-  { id: 5, start: 0, end: 15, durationText: '15 seconds' },  // Level 5
-  { id: 6, start: 0, end: 30, durationText: '30 seconds' },  // Level 6
+  { id: 1, start: 0, end: 0.1, durationText: '0.1 seconds' },  // Level 1
+  { id: 2, start: 0, end: 0.5, durationText: '0.5 seconds' },  // Level 2
+  { id: 3, start: 0, end: 2, durationText: '2 seconds' }, // Level 3
+  { id: 4, start: 0, end: 4, durationText: '4 seconds' },  // Level 4
+  { id: 5, start: 0, end: 8, durationText: '8 seconds' },  // Level 5
+  { id: 6, start: 0, end: 15, durationText: '15 seconds' },  // Level 6
+  { id: 7, start: 0, end: 30, durationText: '30 seconds' },  // Level 7
 ];
 
 const STORAGE_KEY_PREFIX = 'sonicGuessrDailyState_';
