@@ -1,5 +1,5 @@
 // src/app/pages/daily-challenge/daily-challenge.ts
-import { Component, OnInit, inject, ViewChild, AfterViewInit, PLATFORM_ID } from '@angular/core'; // Added ViewChild, AfterViewInit
+import { Component, OnInit, inject, ViewChild, AfterViewInit, isDevMode, PLATFORM_ID } from '@angular/core'; // Import isDevMode
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { ChallengeService, GuessPayload, GuessResponse } from '../../services/challenge';
 import { DailyChallengeSong } from '../../models/daily-song.model';
@@ -44,6 +44,7 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
   feedbackDisplay_points: number = 0;
   feedbackDisplay_correctAnswer: { title: string, artist: string } | null = null;
   private todayDateString: string = ''; // To store YYYY-MM-DD
+  public isDev: boolean = false; // Flag for dev-only elements
 
 
   // Property to track total score for the daily challenge
@@ -64,6 +65,11 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
   @ViewChild(AudioPlayer) audioPlayerRef!: AudioPlayer;
 
   private platformId = inject(PLATFORM_ID); // Inject PLATFORM_ID using inject()
+
+  constructor() {
+    this.isDev = isDevMode(); // Check if running in development mode
+    console.log('DailyChallengeComponent constructor. isDev:', this.isDev);
+  }
 
   getTodayDateString() {
     return new Date().toISOString().slice(0, 10);

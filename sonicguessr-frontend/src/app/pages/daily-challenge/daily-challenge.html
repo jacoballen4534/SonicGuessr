@@ -1,8 +1,21 @@
-<div>
-  <h2>Today's Challenge</h2>
+<div class="daily-challenge-page themed-background">
+  
+  <header class="challenge-page-header card-style">
+    <h2>Today's SonicGuessr Challenge!</h2>
+    <div class="challenge-stats" *ngIf="!isLoading && dailySongs.length > 0">
+      <span *ngIf="activeSong" class="stat-item">
+        Song {{ activeSongIndex + 1 }} of {{ dailySongs.length }}
+      </span>
+      <span class="stat-item score">Score: {{ totalDailyScore }}</span>
+    </div>
+  </header>
 
-  <div *ngIf="isLoading"><p>Loading songs...</p></div>
-  <div *ngIf="error"><p style="color: red;">{{ error }}</p></div>
+  <div *ngIf="isLoading" class="loading-state card-style">
+    <p>Loading your challenge...</p>
+  </div>
+  <div *ngIf="error" class="error-state card-style">
+    <p>{{ error }}</p>
+  </div>
 
   <app-feedback-display
       [message]="feedbackDisplay_message"
@@ -11,42 +24,59 @@
       [correctAnswer]="feedbackDisplay_correctAnswer">
   </app-feedback-display>
 
-  <div *ngIf="!isLoading && !error && !activeSong && dailySongs.length > 0 && !(feedbackDisplay_message && feedbackDisplay_message.includes('completed all songs'))">
-    <button (click)="startChallengeWithFirstSong()">Start Challenge</button>
+  <div *ngIf="!isLoading && !error && !activeSong && dailySongs.length > 0 && !(feedbackDisplay_message && feedbackDisplay_message.includes('completed all songs'))" class="start-challenge-container">
+    <button class="button-cta large-button" (click)="startChallengeWithFirstSong()">Start Today's Challenge!</button>
   </div>
-
-  <div *ngIf="!isLoading && !error && dailySongs.length === 0 && !activeSong">
+  
+  <div *ngIf="!isLoading && !error && dailySongs.length === 0 && !activeSong" class="no-songs-message card-style">
     <p>No songs available for today's challenge yet. Please check back later.</p>
   </div>
 
-  <div *ngIf="activeSong">
-    <h3>Playing Song #{{ activeSongIndex + 1 }} of {{ dailySongs.length }}</h3>
-    <p><strong>Title Hint (Dev only):</strong> {{ activeSong.title }}</p>
-    <p><strong>Artist Hint (Dev only):</strong> {{ activeSong.artist }}</p>
-    <img *ngIf="activeSong.album_art_url" [src]="activeSong.album_art_url" alt="Album art" width="150">
+  <div *ngIf="activeSong" class="active-game-area">
+    <section class="clue-area card-style">
+      <h3 *ngIf="isDev">Clues (Dev Only)</h3>
+      <p *ngIf="isDev"><strong>Title Hint:</strong> {{ activeSong.title }}</p>
+      <p *ngIf="isDev"><strong>Artist Hint:</strong> {{ activeSong.artist }}</p>
+      <div class="album-art-container">
+        <img *ngIf="activeSong.album_art_url" [src]="activeSong.album_art_url" alt="Album art for the song" />
+        <div *ngIf="!activeSong.album_art_url" class="no-album-art">
+            <span>?</span>
+        </div>
+      </div>
+    </section>
 
-    <p>Current Snippet Level: {{ SNIPPET_LEVELS[currentSnippetLevelIndex].durationText || 'N/A' }}</p>
+    <section class="audio-controls-area card-style">
+      <h4>Listen to the Snippet:</h4>
+      <p>Level {{ currentSnippetLevelIndex + 1 }}: {{ SNIPPET_LEVELS[currentSnippetLevelIndex].durationText || 'N/A' }}</p>
+      <div class="button-group">
+        <button class="button-cta play-snippet-button" (click)="playCurrentSnippet()">
+          Play Snippet
+        </button>
+        <button class="button-secondary skip-snippet-button" (click)="skipToNextSnippet()" 
+                [disabled]="currentSnippetLevelIndex >= SNIPPET_LEVELS.length - 1">
+          Skip to Next Snippet
+          <span *ngIf="currentSnippetLevelIndex < SNIPPET_LEVELS.length - 1">
+            ({{ SNIPPET_LEVELS[currentSnippetLevelIndex + 1].durationText }})
+          </span>
+        </button>
+      </div>
+    </section>
 
-    <button (click)="playCurrentSnippet()">Play Current Snippet</button>
-    <button (click)="skipToNextSnippet()" 
-            [disabled]="currentSnippetLevelIndex >= SNIPPET_LEVELS.length - 1 || !activeSong">
-      Skip to Next Snippet 
-      <span *ngIf="currentSnippetLevelIndex < SNIPPET_LEVELS.length - 1">
-        ({{ SNIPPET_LEVELS[currentSnippetLevelIndex + 1].durationText }})
-      </span>
-      <span *ngIf="currentSnippetLevelIndex >= SNIPPET_LEVELS.length - 1">
-        (No more)
-      </span>
-    </button>
+    <section class="guess-input-area card-style">
+      <h4>Make Your Guess!</h4>
+      <app-guess-input (guessSubmitted)="handleUserGuess($event)"></app-guess-input>
+    </section>
 
-    <app-guess-input (guessSubmitted)="handleUserGuess($event)"></app-guess-input>
-
-    <button (click)="nextSong()" 
-            *ngIf="activeSongIndex < dailySongs.length - 1"
-            class="dev-next-song-button">
-      Next Song (DEV - skip)
-    </button>
+    <div *ngIf="isDev && activeSongIndex < dailySongs.length - 1" class="dev-controls">
+        <button class="button-dev" (click)="nextSong()">
+            Next Song (DEV SKIP)
+        </button>
+    </div>
   </div>
+
+  <div *ngIf="!isLoading && !error && !activeSong && feedbackDisplay_message.includes('completed all songs')" class="challenge-complete-message card-style">
+      <h3>Challenge Complete!</h3>
+      </div>
 
   <app-audio-player
     [videoId]="playbackVideoId"
