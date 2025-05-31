@@ -17,13 +17,6 @@
     <p>{{ error }}</p>
   </div>
 
-  <app-feedback-display
-      [message]="feedbackDisplay_message"
-      [type]="feedbackDisplay_type"
-      [pointsAwarded]="feedbackDisplay_points"
-      [correctAnswer]="feedbackDisplay_correctAnswer">
-  </app-feedback-display>
-
   <div *ngIf="!isLoading && !error && !activeSong && dailySongs.length > 0 && !(feedbackDisplay_message && feedbackDisplay_message.includes('completed all songs'))" class="start-challenge-container">
     <button class="button-cta large-button" (click)="startChallengeWithFirstSong()">Start Today's Challenge!</button>
   </div>
@@ -73,7 +66,16 @@
         </button>
       </div>
     </section>
+  </div>
 
+  <app-feedback-display
+    [message]="feedbackDisplay_message"
+    [type]="feedbackDisplay_type"
+    [pointsAwarded]="feedbackDisplay_points"
+    [correctAnswer]="feedbackDisplay_correctAnswer">
+  </app-feedback-display>
+
+  <div *ngIf="activeSong" class="active-game-area">
     <section class="guess-input-area card-style">
       <h4>Make Your Guess!</h4>
       <app-guess-input (guessSubmitted)="handleUserGuess($event)"></app-guess-input>

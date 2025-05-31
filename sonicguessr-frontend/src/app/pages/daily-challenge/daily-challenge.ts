@@ -199,7 +199,13 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
     if (this.dailySongs && index >= 0 && index < this.dailySongs.length) {
 
       if (!this.activeSong || this.activeSong.id !== this.dailySongs[index].id) {
-        this.isAlbumArtLoading = true; // <<< Set loading flag for new image
+        const newSong = this.dailySongs[index];
+        if (newSong.album_art_url) {
+          this.isAlbumArtLoading = true; // <<< Set loading true for the NEW album art
+        } else {
+          this.isAlbumArtLoading = false; // No art to load for the new song
+        }
+
         // Pre-set blur to max for the container before new image source is bound
         // updateAlbumArtBlur will be called again in playCurrentSnippet with correct level 0 blur
         this.albumArtStyle = `blur(${this.SNIPPET_LEVELS.length > 0 ? 20 : 0}px)`; // Default high blur, or 0 if no levels
