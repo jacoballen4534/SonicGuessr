@@ -60,10 +60,18 @@ function initializePassport(app, getDb) { // Accept getDb
     });
 
     passport.deserializeUser((id, done) => {
-        db.get('SELECT * FROM users WHERE id = ?', [id], (err, user) => {
-            done(err, user);
+    const dbInstance = getDb(); // Ensure getDb() is accessible here
+    dbInstance.get('SELECT * FROM users WHERE id = ?', [id], (err, user) => {
+        if (err) {
+            return done(err);
+        }
+        if (!user) {
+            return done(null, false); // Or done(new Error('User not found from session'));
+        }
+        done(null, user);
         });
     });
+
 }
 
 module.exports = { initializePassport };

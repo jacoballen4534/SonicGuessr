@@ -1,40 +1,34 @@
 // src/app/app.ts
-import { Component, OnInit, inject } from '@angular/core'; // Add inject
+import { Component, OnInit, inject } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
-import { AuthService, User } from './services/auth'; // Import AuthService and User
+import { AuthService, User } from './services/auth';
 import { Observable } from 'rxjs';
-import { CommonModule } from '@angular/common'; // For async pipe and *ngIf
+import { CommonModule } from '@angular/common';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, CommonModule], // Add CommonModule
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, CommonModule],
   templateUrl: './app.html',
   styleUrls: ['./app.scss']
 })
 export class App implements OnInit {
-  private authService = inject(AuthService); // Inject AuthService
+  private authService = inject(AuthService);
 
   isAuthenticated$: Observable<boolean>;
   currentUser$: Observable<User | null>;
 
   constructor() {
-    console.log('Root App component constructor called');
+    // These just assign the observables, subscription happens in template via async pipe or in ngOnInit
     this.isAuthenticated$ = this.authService.isAuthenticated$;
     this.currentUser$ = this.authService.currentUser$;
   }
 
   ngOnInit(): void {
-    console.log('Root App component ngOnInit called');
-    // AuthService constructor already calls checkAuthState()
-    // You can subscribe here if you need to react to the initial auth check completing
-    this.authService.currentUser$.subscribe(user => {
-      if (user) {
-        console.log('Root App: User logged in on init/refresh:', user.display_name);
-      } else {
-        console.log('Root App: No user logged in on init/refresh.');
-      }
-    });
+
+    this.authService.currentUser$.subscribe(userFromAuthService => {
+          });
+
   }
 
   login(): void {

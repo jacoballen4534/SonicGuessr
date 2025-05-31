@@ -51,25 +51,25 @@ export class AuthService {
 
   // Check current authentication state by fetching user profile
   checkAuthState(): Observable<User | null> {
-    return this.http.get<User>(`${this.authApiBaseUrl}/profile`, { withCredentials: true }).pipe(
-      tap(user => {
-        if (user) {
-          this.currentUserSubject.next(user);
+    // Assuming backend sends { user: UserProfileData }
+    return this.http.get<{ user: User }>(`${this.authApiBaseUrl}/profile`, { withCredentials: true }).pipe(
+      tap(response => { // 'response' here is { user: UserProfileData }
+        const user = response.user; // <<< CORRECTLY EXTRACTING HERE
+
+        if (user && (user.display_name || user.username)) { // Check if user object exists and has a name field
+          this.currentUserSubject.next(user); // <<< SHOULD BE EMITTING THE EXTRACTED 'user'
           this.isAuthenticatedSubject.next(true);
-          console.log('AuthService: User is authenticated', user);
         } else {
-          // This case might not happen if /auth/profile returns 401 for non-auth users
-          this.currentUserSubject.next(null);
+          this.currentUserSubject.next(null); // Ensure null is emitted if user data is not valid
           this.isAuthenticatedSubject.next(false);
-          console.log('AuthService: User is not authenticated (no user data)');
         }
       }),
+      map(response => response.user), // Ensure the observable stream for downstream subscribers also gets the extracted user
       catchError(error => {
-        // If /auth/profile returns 401 or other error, user is not authenticated
         this.currentUserSubject.next(null);
         this.isAuthenticatedSubject.next(false);
-        console.log('AuthService: User is not authenticated (error fetching profile)', error.status);
-        return of(null); // Return an observable of null to keep the stream alive
+        console.log('AuthService: User is not authenticated (error fetching profile). Status:', error.status);
+        return of(null);
       })
     );
   }
