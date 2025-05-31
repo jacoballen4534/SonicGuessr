@@ -1,0 +1,31 @@
+<h2>Edit Your Profile</h2>
+<div *ngIf="currentUser">
+  <p>Current Google Display Name: {{ currentUser.display_name }}</p>
+  <p>Current Email: {{ currentUser.email }}</p>
+</div>
+
+<form [formGroup]="profileForm" (ngSubmit)="onSubmit()">
+  <div>
+    <label for="username">Username:</label>
+    <input id="username" type="text" formControlName="username">
+    <div *ngIf="profileForm.get('username')?.invalid && (profileForm.get('username')?.dirty || profileForm.get('username')?.touched)">
+      <small *ngIf="profileForm.get('username')?.errors?.['minlength']">Username must be at least 3 characters.</small>
+      <small *ngIf="profileForm.get('username')?.errors?.['maxlength']">Username cannot exceed 20 characters.</small>
+    </div>
+  </div>
+
+  <div>
+    <label for="profile_image_url">Profile Image URL:</label>
+    <input id="profile_image_url" type="url" formControlName="profile_image_url" placeholder="https://example.com/image.png">
+     <div *ngIf="profileForm.get('profile_image_url')?.invalid && (profileForm.get('profile_image_url')?.dirty || profileForm.get('profile_image_url')?.touched)">
+      <small *ngIf="profileForm.get('profile_image_url')?.errors?.['pattern']">Please enter a valid URL.</small>
+    </div>
+  </div>
+
+  <button type="submit" [disabled]="profileForm.invalid || isLoading">
+    {{ isLoading ? 'Saving...' : 'Save Profile' }}
+  </button>
+</form>
+
+<div *ngIf="successMessage" style="color: green; margin-top: 10px;">{{ successMessage }}</div>
+<div *ngIf="errorMessage" style="color: red; margin-top: 10px;">{{ errorMessage }}</div>

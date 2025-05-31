@@ -141,6 +141,89 @@ router.post('/daily-challenge/guess', isAuthenticated, (req, res) => {
     });
 });
 
+router.patch('/user/profile', isAuthenticated, async (req, res) => {
+    const userId = req.user.id; // Get user ID from the authenticated session
+    const { username, profile_image_url } = req.body;
+
+    if (!username && !profile_image_url) {
+        return res.status(400).json({ error: 'No update fields provided (username or profile_image_url required).' });
+    }
+
+    const dbInstance = db.getDb(); // Use your getDb function
+    let updateFields = [];
+    let updateValues = [];
+
+    if (username !== undefined) {
+        const trimmedUsername = username.trim();
+        if (trimmedUsername.length < 3 || trimmedUsername.length > 20) {
+            return res.status(400).json({ error: 'Username must be between 3 and 20 characters.' });
+        }
+        // TODO: Add more username validation (e.g., allowed characters) if desired
+
+        // Check for username uniqueness BEFORE attempting update
+        try {
+            const existingUser = await new Promise((resolve, reject) => {
+                dbInstance.get('SELECT id FROM users WHERE username = ? AND id != ?', [trimmedUsername, userId], (err, row) => {
+                    if (err) return reject(err);
+                    resolve(row);
+                });
+            });
+
+            if (existingUser) {
+                return res.status(409).json({ error: 'Username is already taken. Please choose another.' });
+            }
+        } catch (err) {
+            console.error("Error checking username uniqueness:", err.message);
+            return res.status(500).json({ error: 'Failed to validate username.' });
+        }
+        updateFields.push('username = ?');
+        updateValues.push(trimmedUsername);
+    }
+
+    if (profile_image_url !== undefined) {
+        // Basic URL validation (optional, can be more robust)
+        try {
+            new URL(profile_image_url); // Throws error if invalid URL
+            updateFields.push('profile_image_url = ?');
+            updateValues.push(profile_image_url);
+        } catch (e) {
+            return res.status(400).json({ error: 'Invalid profile image URL format.' });
+        }
+    }
+
+    if (updateFields.length === 0) {
+         // Should not happen if initial check for fields is done, but as a safeguard
+        return res.status(400).json({ error: 'No valid fields to update.'});
+    }
+
+    updateValues.push(userId); // For the WHERE clause
+
+    const sql = `UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`;
+
+    dbInstance.run(sql, updateValues, function (err) {
+        if (err) {
+            console.error("Error updating user profile:", err.message);
+            return res.status(500).json({ error: 'Failed to update profile.' });
+        }
+        if (this.changes === 0) {
+            return res.status(404).json({ error: 'User not found or no changes made.' });
+        }
+
+        // Fetch the updated user profile to return
+        dbInstance.get('SELECT id, google_id, username, display_name, email, profile_image_url FROM users WHERE id = ?', [userId], (getErr, updatedUser) => {
+            if (getErr) {
+                console.error("Error fetching updated profile:", getErr.message);
+                return res.status(500).json({ error: 'Profile updated, but failed to fetch updated details.' });
+            }
+            if (!updatedUser) {
+                 return res.status(404).json({ error: 'User not found after update.' });
+            }
+            const { google_id, id, ...userProfile } = updatedUser; // Exclude google_id and internal id
+            res.json({ message: 'Profile updated successfully', user: userProfile });
+        });
+    });
+});
+
 
 // GET /api/songs/autocomplete
 router.get('/songs/autocomplete', async (req, res) => {
