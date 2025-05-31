@@ -4,11 +4,12 @@ import { ApplicationRef } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { App } from './app/app'; // Ensure this path and class name are correct
 import { appConfig } from './app/app.config'; // Ensure this path is correct
+import { config as serverAppConfig } from './app/app.config.server'; // <<< This imports the 'config' you just defined
 
 // Define a function that performs the bootstrap and returns the Promise<ApplicationRef>
 // This function will be our default export for the server, and can also be called on the client.
 const bootstrap = (): Promise<ApplicationRef> => {
-  return bootstrapApplication(App, appConfig)
+  return bootstrapApplication(App, serverAppConfig)
     .then(appRef => {
       // Optional: expose appRef for debugging in the browser console
       if (typeof window !== 'undefined') {
