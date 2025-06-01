@@ -12,6 +12,11 @@ export interface GuessPayload {
   currentLevel: number; // Represents the attempt number or snippet level (e.g., 0 for first snippet, 1 for second)
 }
 
+export interface DailyChallengeResponse { // <<< NEW INTERFACE
+  songs: DailyChallengeSong[];
+  challengeCompletedToday: boolean;
+}
+
 // Interface for the expected response from the backend guess endpoint
 export interface GuessResponse {
   correct: boolean;
@@ -47,21 +52,23 @@ export class ChallengeService {
 
   constructor(private http: HttpClient) { }
 
-  getDailySongs(): Observable<DailyChallengeSong[]> {
-    return this.http.get<DailyChallengeSong[]>(this.songsApiUrl);
+  getDailySongs(): Observable<DailyChallengeResponse> { // <<< UPDATED RETURN TYPE
+    return this.http.get<DailyChallengeResponse>(this.songsApiUrl, {
+      withCredentials: true // <<< IMPORTANT: Ensure this is here if the check relies on auth
+    });
   }
 
   // New method to submit a guess
   submitGuess(payload: GuessPayload): Observable<GuessResponse> {
     return this.http.post<GuessResponse>(this.guessApiUrl, payload, {
-      withCredentials: true // Important if your backend uses session-based authentication
+      withCredentials: true
     });
   }
 
-    // New method to fetch daily leaderboard
+  // New method to fetch daily leaderboard
   getDailyLeaderboard(): Observable<LeaderboardResponse> {
     return this.http.get<LeaderboardResponse>(this.leaderboardApiUrl, {
-      withCredentials: true // <<< ENSURE THIS OPTION IS PRESENT AND TRUE
+      withCredentials: true
     });
   }
 }

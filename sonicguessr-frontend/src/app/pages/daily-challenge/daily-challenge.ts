@@ -1,11 +1,15 @@
 // src/app/pages/daily-challenge/daily-challenge.ts
-import { Component, OnInit, inject, ViewChild, AfterViewInit, isDevMode, PLATFORM_ID } from '@angular/core'; // Import isDevMode
+import { Component, OnInit, inject, ViewChild, AfterViewInit, isDevMode, PLATFORM_ID, OnDestroy } from '@angular/core'; // Added OnDestroy
 import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { ChallengeService, GuessPayload, GuessResponse } from '../../services/challenge';
+// Ensure DailyChallengeResponse is imported from your service
+import { ChallengeService, GuessPayload, GuessResponse, DailyChallengeResponse } from '../../services/challenge'; // Adjusted path to service, ensure DailyChallengeResponse is exported
 import { DailyChallengeSong } from '../../models/daily-song.model';
-import { AudioPlayer } from '../../components/audio-player/audio-player'; // Assuming this is its class name
-import { GuessInput } from '../../components/guess-input/guess-input'; // Adjust path
+import { AudioPlayer } from '../../components/audio-player/audio-player';
+import { GuessInput } from '../../components/guess-input/guess-input';
 import { FeedbackDisplay } from '../../components/feedback-display/feedback-display';
+import { AuthService } from '../../services/auth'; // <<< IMPORT AuthService
+import { Subscription } from 'rxjs'; // <<< IMPORT Subscription
+
 
 const snippetLevelsData = [
   { id: 1, start: 0, end: 0.1, durationText: '0.1 seconds' },  // Level 1
@@ -22,80 +26,116 @@ const STORAGE_KEY_PREFIX = 'sonicGuessrDailyState_';
 @Component({
   selector: 'app-daily-challenge-page',
   standalone: true,
-  imports: [
-    CommonModule,
-    AudioPlayer,
-    GuessInput,
-    FeedbackDisplay,
-  ],
+  imports: [ CommonModule, AudioPlayer, GuessInput, FeedbackDisplay ],
   templateUrl: './daily-challenge.html',
   styleUrls: ['./daily-challenge.scss']
 })
-export class DailyChallenge implements OnInit, AfterViewInit { // Implemented AfterViewInit
+export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy { // Added OnDestroy
   
   private challengeService = inject(ChallengeService);
+  private authService = inject(AuthService); // <<< INJECT AuthService
+  private platformId = inject(PLATFORM_ID);
+  
   dailySongs: DailyChallengeSong[] = [];
   isLoading = true;
   error: string | null = null;
-  private proceedToNextSongOnLoad: boolean = false; // New flag
+  private proceedToNextSongOnLoad: boolean = false;
 
   feedbackDisplay_message: string = '';
   feedbackDisplay_type: 'correct' | 'incorrect' | 'info' | null = null;
   feedbackDisplay_points: number = 0;
   feedbackDisplay_correctAnswer: { title: string, artist: string } | null = null;
-  private todayDateString: string = ''; // To store YYYY-MM-DD
-  public isDev: boolean = false; // Flag for dev-only elements
-  public albumArtStyle: string = ''; // To bind to [style.filter] in the template
-  public isAlbumArtLoading: boolean = false; // New flag
+  
+  private todayDateString: string = '';
+  public isDev: boolean = false;
+  public albumArtStyle: string = '';
+  public isAlbumArtLoading: boolean = false;
 
-
-  // Property to track total score for the daily challenge
   totalDailyScore: number = 0;
-
-  // Game State for current song and snippet
   activeSong: DailyChallengeSong | null = null;
   activeSongIndex: number = -1;
-  currentSnippetLevelIndex: number = 0; // Index for SNIPPET_LEVELS array
-  SNIPPET_LEVELS = snippetLevelsData ;
+  currentSnippetLevelIndex: number = 0;
+  public SNIPPET_LEVELS = snippetLevelsData;
 
-  // Properties to bind to AudioPlayerComponent's inputs
   playbackVideoId: string | null = null;
   playbackStartSeconds: number = 0;
   playbackEndSeconds: number = 0;
 
-  // Get a reference to the AudioPlayerComponent instance
   @ViewChild(AudioPlayer) audioPlayerRef!: AudioPlayer;
 
-  private platformId = inject(PLATFORM_ID); // Inject PLATFORM_ID using inject()
+  // Properties for "once per day" logic
+  public challengeCompletedTodayByPlayer: boolean = false; // <<< NEW
+  public isAuthenticated: boolean = false;                // <<< NEW
+
+  private subscriptions = new Subscription(); // <<< NEW for managing subscriptions
 
   constructor() {
-    this.isDev = isDevMode(); // Check if running in development mode
-    console.log('DailyChallengeComponent constructor. isDev:', this.isDev);
+    this.isDev = isDevMode();
+    if (isPlatformBrowser(this.platformId)) {
+      this.todayDateString = this.getTodayDateString();
+    }
   }
 
-  getTodayDateString() {
+  getTodayDateString(): string {
     return new Date().toISOString().slice(0, 10);
   }
 
   ngOnInit(): void {
-    this.todayDateString = this.getTodayDateString()
-    console.log('DailyChallenge component initialized, fetching songs...');
-    this.challengeService.getDailySongs().subscribe({
-      next: (songs) => {
-        this.dailySongs = songs;
-        this.isLoading = false;
-        console.log('Daily songs fetched:', this.dailySongs);
-        if (this.dailySongs.length > 0) {
-          this.loadGameStateOrDefault(); // Load saved state or start fresh
+    console.log('DailyChallenge component initialized...');
+    this.subscriptions.add(
+      this.authService.isAuthenticated$.subscribe(isAuth => {
+        this.isAuthenticated = isAuth;
+        if (isPlatformBrowser(this.platformId)) {
+            this.fetchSongsAndSetInitialState();
         }
-      },
-      error: (err) => {
-        console.error('Error fetching daily songs:', err);
-        this.error = 'Failed to load songs. Please try again later.';
-        this.isLoading = false;
-      }
-    });
+      })
+    );
+
+    if (!isPlatformBrowser(this.platformId)) {
+        this.isLoading = false; 
+        console.log('DailyChallenge SSR: Song fetch and state load deferred to client.');
+    }
   }
+  
+  fetchSongsAndSetInitialState(): void {
+    this.isLoading = true;
+    this.error = null;
+    this.feedbackDisplay_message = ''; 
+    this.feedbackDisplay_type = null;
+
+    this.subscriptions.add(
+      this.challengeService.getDailySongs().subscribe({
+        next: (response: DailyChallengeResponse) => { 
+          this.dailySongs = response.songs || [];
+          this.challengeCompletedTodayByPlayer = this.isAuthenticated ? response.challengeCompletedToday : false;
+          this.isLoading = false;
+          console.log('Daily songs response:', response, 'Challenge completed by player:', this.challengeCompletedTodayByPlayer);
+
+          if (this.challengeCompletedTodayByPlayer) {
+            this.feedbackDisplay_message = "You've already completed today's challenge! Check the leaderboard or come back tomorrow.";
+            this.feedbackDisplay_type = 'info';
+            this.activeSong = null; 
+            this.activeSongIndex = -1;
+            if (isPlatformBrowser(this.platformId)) {
+                localStorage.removeItem(this.getStorageKey());
+            }
+          } else if (this.dailySongs.length > 0) {
+            this.loadGameStateOrDefault();
+          } else {
+            this.feedbackDisplay_message = "No songs available for today's challenge. Please check back later.";
+            this.feedbackDisplay_type = 'info';
+          }
+        },
+        error: (err) => {
+          console.error('Error fetching daily songs:', err);
+          this.error = 'Failed to load songs. Please try again later.';
+          this.isLoading = false;
+        }
+      })
+    );
+  }
+
+
 
   ngAfterViewInit(): void {
     // The audioPlayerRef will be available here
@@ -108,7 +148,11 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
   }
 
   private loadGameStateOrDefault(): void {
-    if (!isPlatformBrowser(this.platformId)) return; // Ensure save only on browser
+    if (!isPlatformBrowser(this.platformId)) return;
+    if (this.challengeCompletedTodayByPlayer && this.isAuthenticated) {
+        console.log("Not loading saved game state: challenge already marked as completed for today by this user.");
+        return;
+    }
 
     const savedStateString = localStorage.getItem(this.getStorageKey());
     if (savedStateString) {
@@ -119,39 +163,28 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
           this.currentSnippetLevelIndex = savedState.currentSnippetLevelIndex || 0;
           this.totalDailyScore = savedState.totalDailyScore || 0;
           this.proceedToNextSongOnLoad = savedState.proceedToNextSongOnLoad || false;
-
           console.log('Loaded game state:', savedState);
 
           if (this.proceedToNextSongOnLoad) {
-            console.log('Proceeding to next song due to saved flag.');
             this.proceedToNextSongOnLoad = false; 
             this.saveGameState(); 
             this.nextSong();
           } else if (this.activeSongIndex === -1 && this.dailySongs.length > 0) { 
-            // Game was previously completed and state saved with activeSongIndex = -1
             this.feedbackDisplay_message = `You have completed all songs for today! Your total score: ${this.totalDailyScore}`;
             this.feedbackDisplay_type = 'info';
             this.activeSong = null;
             this.playbackVideoId = null;
-            console.log('Challenge previously completed. Displaying final score message from loaded state.');
-          } else if (this.dailySongs && this.activeSongIndex >= 0 && this.activeSongIndex < this.dailySongs.length) {
+          } else if (this.dailySongs.length > 0 && this.activeSongIndex >= 0 && this.activeSongIndex < this.dailySongs.length) { // Added dailySongs.length check
             this.activeSong = this.dailySongs[this.activeSongIndex];
-            this.updateAlbumArtBlur(); // <<< UPDATE BLUR after restoring activeSong & currentSnippetLevelIndex
+            this.updateAlbumArtBlur(); 
             this.playCurrentSnippet();
           } else {
-            this.startChallengeWithFirstSong(); // Fallback
+            this.startChallengeWithFirstSong();
           }
-          return;
-        } else {
-          console.warn('Invalid saved game state structure found. Starting fresh.');
-          localStorage.removeItem(this.getStorageKey()); // Clear invalid state
+          return; 
         } 
-      } catch (e) {
-        console.error('Error parsing saved game state. Starting fresh.', e);
-        localStorage.removeItem(this.getStorageKey()); // Clear corrupted state
-      }
+      } catch (e) { localStorage.removeItem(this.getStorageKey());}
     }
-    // No valid saved state, start fresh with the first song
     this.startChallengeWithFirstSong();
   }
 
@@ -180,20 +213,27 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
 
 
   startChallengeWithFirstSong(): void {
+    if (this.challengeCompletedTodayByPlayer && this.isAuthenticated) {
+      // Feedback is set by fetchSongsAndSetInitialState if this condition is met on load.
+      // If called directly, set feedback here.
+      if (!this.feedbackDisplay_message) {
+        this.feedbackDisplay_message = "You've already played today's challenge!";
+        this.feedbackDisplay_type = 'info';
+      }
+      return;
+    }
+    if (this.dailySongs.length === 0 && !this.isLoading) {
+        this.feedbackDisplay_message = "No songs loaded to start the challenge.";
+        this.feedbackDisplay_type = 'info';
+        return;
+    }
     this.totalDailyScore = 0;
     this.currentSnippetLevelIndex = 0;
     this.proceedToNextSongOnLoad = false;
-    // Ensure activeSongIndex is set before calling setActiveSong if it relies on it
-    if (this.dailySongs.length > 0) {
-        this.setActiveSong(0); 
-    } else {
-        this.activeSong = null;
-        this.activeSongIndex = -1;
-        this.updateAlbumArtBlur(); // Ensure blur is cleared if no songs
-        this.saveGameState();
-    }
+    this.feedbackDisplay_message = ''; 
+    this.feedbackDisplay_type = null;
+    this.setActiveSong(0);
   }
-
 
   setActiveSong(index: number): void {
     if (this.dailySongs && index >= 0 && index < this.dailySongs.length) {
@@ -276,6 +316,12 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
 
 
   handleUserGuess(guess: string): void {
+    if (this.challengeCompletedTodayByPlayer && this.isAuthenticated) {
+      this.feedbackDisplay_message = "You've already completed today's challenge. No more guesses allowed.";
+      this.feedbackDisplay_type = 'info';
+      return;
+    }
+
     if (!this.activeSong) {
       this.feedbackDisplay_message = "Error: No active song selected.";
       this.feedbackDisplay_type = 'incorrect';
@@ -293,63 +339,65 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
       currentLevel: this.currentSnippetLevelIndex + 1
     };
 
-    this.challengeService.submitGuess(payload).subscribe({
-      next: (response: GuessResponse) => {
-        this.feedbackDisplay_message = response.message;
-        let songIsOver = false; // Flag to determine if current song is ending
+    this.subscriptions.add( // Add to subscriptions
+      this.challengeService.submitGuess(payload).subscribe({
+        next: (response: GuessResponse) => {
+          this.feedbackDisplay_message = response.message;
+          let songIsOver = false; 
 
-        if (response.correct) {
-          this.feedbackDisplay_type = 'correct';
-          this.feedbackDisplay_points = response.pointsAwarded || 0;
-          this.totalDailyScore += this.feedbackDisplay_points;
-          songIsOver = true;
-        } else { // Incorrect guess
-          this.feedbackDisplay_type = 'incorrect';
-          if (response.gameOverForSong || (this.currentSnippetLevelIndex >= this.SNIPPET_LEVELS.length - 1)) {
+          if (response.correct) {
+            this.feedbackDisplay_type = 'correct';
+            this.feedbackDisplay_points = response.pointsAwarded || 0;
+            this.totalDailyScore += this.feedbackDisplay_points;
             songIsOver = true;
-            this.feedbackDisplay_correctAnswer = { 
-              title: response.songTitle || this.activeSong?.title || 'Unknown', 
-              artist: response.artist || this.activeSong?.artist || 'Unknown' 
-            };
-            if (!response.gameOverForSong) { // Client determined game over
-                this.feedbackDisplay_message = response.message + ` That was the last snippet. The song was: ${this.activeSong?.title || 'Unknown'}.`;
-            }
-          } else { // Incorrect, but more snippet levels are available
-            this.feedbackDisplay_message = response.message + " Preparing next snippet...";
-            if (this.advanceToNextSnippetLevel()) { // Advances index
-              this.saveGameState(); // Save new snippet level
-              setTimeout(() => { this.playCurrentSnippet(); }, 1500);
+          } else { 
+            this.feedbackDisplay_type = 'incorrect';
+            if (response.gameOverForSong || (this.currentSnippetLevelIndex >= this.SNIPPET_LEVELS.length - 1)) {
+              songIsOver = true;
+              this.feedbackDisplay_correctAnswer = { 
+                title: response.songTitle || this.activeSong?.title || 'Unknown', 
+                artist: response.artist || this.activeSong?.artist || 'Unknown' 
+              };
+              if (!response.gameOverForSong) { 
+                  this.feedbackDisplay_message = response.message + ` That was the last snippet. The song was: ${this.activeSong?.title || 'Unknown'}.`;
+              }
             } else { 
-              // Should not happen if advanceToNextSnippetLevel logic is sound with outer check
-              // but as a fallback, treat as game over.
-              songIsOver = true; 
-              this.feedbackDisplay_message = "No more snippets. Game over for this song.";
+              this.feedbackDisplay_message = response.message + " Preparing next snippet...";
+              if (this.advanceToNextSnippetLevel()) { 
+                this.saveGameState(); 
+                setTimeout(() => { this.playCurrentSnippet(); }, 1500);
+              } else { 
+                songIsOver = true; 
+                this.feedbackDisplay_message = "No more snippets. Game over for this song.";
+              }
             }
           }
-        }
 
-        // If the song is determined to be over (correct guess or game over from incorrect)
-        if (songIsOver) {
-          this.proceedToNextSongOnLoad = true; // <<< SET FLAG
-          this.saveGameState();                // <<< SAVE STATE (with flag and final score for this song)
-
-          const delay = response.correct ? 2500 : 4000;
-          setTimeout(() => {
-            // this.proceedToNextSongOnLoad = false; // Reset before calling nextSong
-            // this.saveGameState(); // Save the reset flag
-            // No, nextSong() itself should handle resetting this flag for the *new* state it establishes
-            this.nextSong();
-          }, delay);
+          if (songIsOver) {
+            this.proceedToNextSongOnLoad = true; 
+            // Check if this was the last song of the daily challenge
+            if (this.activeSongIndex >= this.dailySongs.length - 1) {
+                this.challengeCompletedTodayByPlayer = true; // Challenge fully completed
+            }
+            this.saveGameState(); 
+            const delay = response.correct ? 2500 : 4000;
+            setTimeout(() => { this.nextSong(); }, delay);
+          }
+        },
+        error: (err) => {
+          this.feedbackDisplay_type = 'incorrect';
+          if (err.status === 403 && err.error?.message?.includes("already completed today's challenge")) {
+            this.feedbackDisplay_message = err.error.message;
+            this.challengeCompletedTodayByPlayer = true; // Mark as completed based on backend
+            this.activeSong = null; 
+            this.activeSongIndex = -1;
+            this.saveGameState(); 
+          } else {
+            this.feedbackDisplay_message = err.error?.message || 'Failed to submit guess.';
+          }
         }
-        // If !songIsOver and it was an incorrect guess with next snippet, that path already saved and has its own timeout
-      },
-      error: (err) => {
-        this.feedbackDisplay_type = 'incorrect';
-        this.feedbackDisplay_message = err.error?.message || 'Failed to submit guess.';
-        // Potentially save state here if relevant, e.g., an attempt was made.
-        // For now, just showing error.
-      }
-    });
+      })
+    );
   }
 
   playNextSnippetLevel(): void {
@@ -359,52 +407,37 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
       this.feedbackDisplay_type = 'incorrect';
       return;
     }
-    // Use 'this.SNIPPET_LEVELS'
     if (this.currentSnippetLevelIndex < this.SNIPPET_LEVELS.length - 1) {
       this.currentSnippetLevelIndex++;
-      this.feedbackDisplay_message = `Playing snippet level ${this.currentSnippetLevelIndex + 1}...`; // Update feedback
+      this.feedbackDisplay_message = `Playing snippet level ${this.currentSnippetLevelIndex + 1}...`;
       this.feedbackDisplay_type = 'info';
-      this.playCurrentSnippet(); // This will play the new currentSnippetLevelIndex
+      this.playCurrentSnippet(); 
     } else {
-      // This case means the user tried to play next snippet but was already at the last one.
-      // The handleUserGuess logic should ideally prevent reaching here if it treats last level fail as game over.
-      // But if called directly (e.g. from a button that wasn't disabled), provide feedback.
       this.feedbackDisplay_message = `You're already at the last snippet level for "${this.activeSong.title}"!`;
       this.feedbackDisplay_type = 'info';
-      console.log('Already at the last snippet level (client-side check in playNextSnippetLevel).');
-      // You might want to re-play the current (last) snippet if they click a button, or do nothing.
-      // For now, just a message. The game over logic is primarily in handleUserGuess.
     }
   }
 
-  // (getStorageKey, loadGameStateOrDefault, nextSong, etc. remain crucial)
-  // Ensure nextSong also calls saveGameState or appropriately clears it when challenge is over.
   nextSong(): void {
-    this.proceedToNextSongOnLoad = false; // Reset flag for the new state
-
-    // Clear feedback related to the *previous* song's guess immediately
+    this.proceedToNextSongOnLoad = false; 
     this.feedbackDisplay_message = ''; 
     this.feedbackDisplay_type = null;
     this.feedbackDisplay_points = 0;
     this.feedbackDisplay_correctAnswer = null;
 
     if (this.activeSong && this.activeSongIndex < this.dailySongs.length - 1) {
-      // There are more songs, advance index
       this.setActiveSong(this.activeSongIndex + 1);
-    } else {
-      // This was the last song, or activeSong was already null (e.g. from load state)
+    } else { 
       console.log('End of daily challenge songs.');
       this.activeSong = null; 
-      this.activeSongIndex = -1; // Indicate challenge is truly done
-      this.currentSnippetLevelIndex = 0; // Reset for a potential new game next time
+      this.activeSongIndex = -1; 
+      this.currentSnippetLevelIndex = 0;
       this.playbackVideoId = null; 
-
-      // Set the final feedback message
       this.feedbackDisplay_message = `You have completed all songs for today! Your total score: ${this.totalDailyScore}`;
       this.feedbackDisplay_type = 'info'; 
-
-      this.albumArtStyle = 'blur(0px)'; // Clear blur at end of challenge
-      this.saveGameState(); // Save the final "completed" state
+      this.challengeCompletedTodayByPlayer = true; // <<< ENSURE THIS IS SET
+      this.albumArtStyle = 'blur(0px)';
+      this.saveGameState(); 
     }
   }
 
@@ -414,18 +447,19 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
       this.feedbackDisplay_type = 'info';
       return;
     }
-    if (this.advanceToNextSnippetLevel()) { // Advances index
+    if (this.advanceToNextSnippetLevel()) { 
       this.feedbackDisplay_message = `Playing snippet level ${this.currentSnippetLevelIndex + 1} (${this.SNIPPET_LEVELS[this.currentSnippetLevelIndex].durationText})...`;
       this.feedbackDisplay_type = 'info';
-      // playCurrentSnippet will be called, which saves state.
-      // No, playCurrentSnippet is NOT automatically called by advanceToNextSnippetLevel anymore.
-      this.playCurrentSnippet(); // Explicitly call to play and save the new state
+      this.playCurrentSnippet();
     } else {
       this.feedbackDisplay_message = 'You are already at the longest snippet for this song!';
       this.feedbackDisplay_type = 'info';
     }
   }
 
+  ngOnDestroy(): void {
+    this.subscriptions.unsubscribe();
+  }
   // playNextSnippetLevel is now primarily for explicit UI calls if needed, or can be removed if skip and auto-advance cover all cases.
   // For auto-advance after wrong guess, we now use advanceToNextSnippetLevel() then playCurrentSnippet().
   // If you still want a button for "Play Next Snippet", it can call this:
@@ -438,29 +472,19 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
       }
   }
 
-  playCurrentSnippet(): void {
+  public playCurrentSnippet(): void { // Public as called by template
     if (this.activeSong && this.SNIPPET_LEVELS[this.currentSnippetLevelIndex]) {
       const levelConfig = this.SNIPPET_LEVELS[this.currentSnippetLevelIndex];
-      
-      // If the image source is changing for the active song, mark as loading
-      if (this.playbackVideoId !== this.activeSong.youtube_video_id) { // Simplified check
-          if (this.activeSong.album_art_url) { // Only if there's an art URL
-            this.isAlbumArtLoading = true;
-          }
+      if (this.playbackVideoId !== this.activeSong.youtube_video_id || !this.isAlbumArtLoading) { 
+        if (this.activeSong.album_art_url) {
+          this.isAlbumArtLoading = true;
+        }
       }
-
       this.playbackVideoId = this.activeSong.youtube_video_id;
       this.playbackStartSeconds = levelConfig.start;
       this.playbackEndSeconds = levelConfig.end;
-      
       console.log(`Prepared to play snippet for "${this.activeSong.title}", Level ${levelConfig.id} (${levelConfig.durationText})`);
-      this.updateAlbumArtBlur(); // <<< ENSURE THIS IS CALLED to update blur for current level
-
-      // The <app-audio-player> in the template will get these new input values.
-      // Its ngOnChanges should handle loading/re-loading the video.
-      // To explicitly tell the player to play after inputs are set (if ngOnChanges doesn't auto-play):
-      // We need to ensure audioPlayerRef is initialized and player is ready.
-      // A slight delay might be needed for inputs to propagate if not using a more reactive approach.
+      this.updateAlbumArtBlur();
       setTimeout(() => {
         if (this.audioPlayerRef) {
           this.audioPlayerRef.playSnippet(); 
@@ -468,18 +492,16 @@ export class DailyChallenge implements OnInit, AfterViewInit { // Implemented Af
           console.error('AudioPlayer reference not available to play snippet.');
         }
       }, 0);
-      this.saveGameState(); // Save state after preparing a new snippet
-
+      this.saveGameState();
     } else {
-      console.warn('No active song or current snippet level configuration to play.');
       this.playbackVideoId = null;
-      this.albumArtStyle = 'blur(0px)'; // Default to no blur
+      this.albumArtStyle = 'blur(0px)';
       this.isAlbumArtLoading = false;
       this.saveGameState(); 
     }
   }
 
-  private advanceToNextSnippetLevel(): boolean {
+  private advanceToNextSnippetLevel(): boolean { // Private helper
     if (this.activeSong && this.currentSnippetLevelIndex < this.SNIPPET_LEVELS.length - 1) {
       this.currentSnippetLevelIndex++;
       console.log(`Advanced to snippet level index: ${this.currentSnippetLevelIndex}`);
