@@ -80,7 +80,7 @@ async function searchYouTubeVideo(title, artist, spotifyDurationMs) {
 
     const searchQueries = [
         `${artist} - ${title} Lyric Video`,
-        `${artist} - ${title} Official Audio`,
+        `${artist} - ${title} (Lyrics)`,
     ];
 
     const youtubeApiSearchUrl = 'https://www.googleapis.com/youtube/v3/search';
@@ -96,7 +96,7 @@ async function searchYouTubeVideo(title, artist, spotifyDurationMs) {
                     type: 'video',
                     videoCategoryId: '10', // Music category
                     videoEmbeddable: 'true',
-                    maxResults: 3, // Check top 5 results for each query type
+                    maxResults: 2, // Check top 5 results for each query type
                     key: YOUTUBE_API_KEY
                 }
             });
@@ -498,7 +498,7 @@ async function searchTracksOnSpotify(query, limit = 5, token) {
     // ... rest of your existing searchTracksOnSpotify for autocomplete
     // This function should return the mapped structure {id, title, artist}
     // Ensure it's robust.
-    if (!token) { console.error('Spotify autocomplete failed: Missing token.'); return []; }
+    if (!token) { console.error('Spotify autocomplete failed: Missing token.'); return []; }    
     try {
         const response = await axios.get(`${SPOTIFY_API_BASE_URL}/search`, {
             headers: { 'Authorization': `Bearer ${token}` },
