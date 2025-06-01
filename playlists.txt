@@ -1,0 +1,4 @@
+Top 100 Geatest of all time - 6i2Qd6OpeRBAzxfscNXeWp
+
+Bilboard hot 100 of each year - https://www.reddit.com/r/spotify/comments/anz441/a_playlist_for_every_year_end_billboard_hot_100/
+Script to create above - https://github.com/awcooper/spotify_billboard_playlist_generator/blob/master/playlist_generators/hot_100_scraper_v1.py
