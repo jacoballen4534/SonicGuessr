@@ -26,10 +26,10 @@ async function curateDailySongs() {
                 console.error('Error checking existing daily songs:', err.message);
                 return reject(err);
             }
-            if (row && row.count > 0) {
-                console.log(`Songs for ${today} already exist (${row.count} songs). Skipping curation.`);
-                return resolve();
-            }
+            // if (row && row.count > 0) {
+            //     console.log(`Songs for ${today} already exist (${row.count} songs). Skipping curation.`);
+            //     return resolve();
+            // }
 
             try {
                 console.log(`No songs for ${today} found. Fetching up to ${DAILY_SONG_COUNT} tracks...`);

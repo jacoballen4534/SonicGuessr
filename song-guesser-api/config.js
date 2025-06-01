@@ -22,4 +22,13 @@ module.exports = {
     SESSION_SECRET: process.env.SESSION_SECRET || 'please_change_this_secret',
 
     FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:4200',
+
+    THEAUDIODB_API_KEY: process.env.THEAUDIODB_API_KEY || '1', // Default to public key '1'
+    THEAUDIODB_API_BASE_URL: 'https://www.theaudiodb.com/api/v1/json', // Base URL for TheAudioDB
+
+    MUSICBRAINZ_API_BASE_URL: 'https://musicbrainz.org/ws/2',
+    MUSICBRAINZ_APP_NAME: process.env.MUSICBRAINZ_APP_NAME || 'DefaultAppName',
+    MUSICBRAINZ_APP_VERSION: process.env.MUSICBRAINZ_APP_VERSION || '1.0.0',
+    MUSICBRAINZ_CONTACT_EMAIL: process.env.MUSICBRAINZ_CONTACT_EMAIL || '', // Or a link to your project
+
 };

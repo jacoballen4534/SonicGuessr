@@ -15,11 +15,22 @@ const {
     SPOTIFY_ACCOUNTS_URL,
     SPOTIFY_API_BASE_URL,
     SPOTIFY_MARKET,
-    // SPOTIFY_PLAYLIST_IDS, // No longer directly used by getTracksForDailyChallenge's primary strategies
-    YOUTUBE_API_KEY,      // Your YouTube Data API v3 Key
-    DAILY_SONG_COUNT
+    YOUTUBE_API_KEY,
+    DAILY_SONG_COUNT,
+    THEAUDIODB_API_KEY,
+    THEAUDIODB_API_BASE_URL,
+    MUSICBRAINZ_API_BASE_URL, // <<< New config var
+    MUSICBRAINZ_APP_NAME,     // <<< New config var
+    MUSICBRAINZ_APP_VERSION,  // <<< New config var
+    MUSICBRAINZ_CONTACT_EMAIL // <<< New config var
 } = require('../config');
-const { getDb } = require('./database-service'); // If this service needs to access db directly
+const { getDb } = require('./database-service'); 
+
+console.log('[MUSIC_SOURCE_DEBUG] music-source-service.js loaded.');
+
+const MB_USER_AGENT = `${MUSICBRAINZ_APP_NAME}/${MUSICBRAINZ_APP_VERSION} (${MUSICBRAINZ_CONTACT_EMAIL || 'Contact info not set'})`;
+
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 let spotifyAccessToken = null;
 let tokenExpiryTime = 0;
@@ -28,6 +39,7 @@ async function getAccessToken() {
     if (spotifyAccessToken && Date.now() < tokenExpiryTime) {
         return spotifyAccessToken;
     }
+    console.log('[MUSIC_SOURCE_DEBUG] Attempting to get new Spotify access token.');
     if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
         console.error('Spotify Client ID or Secret is not configured.');
         throw new Error('Spotify API credentials missing.');
@@ -40,8 +52,8 @@ async function getAccessToken() {
             }
         });
         spotifyAccessToken = response.data.access_token;
-        tokenExpiryTime = Date.now() + (response.data.expires_in - 300) * 1000; // -300s for buffer
-        console.log('Spotify access token obtained.');
+        tokenExpiryTime = Date.now() + (response.data.expires_in - 300) * 1000;
+        console.log('[MUSIC_SOURCE_DEBUG] Spotify access token obtained.');
         return spotifyAccessToken;
     } catch (error) {
         const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
@@ -67,11 +79,8 @@ async function searchYouTubeVideo(title, artist, spotifyDurationMs) {
     }
 
     const searchQueries = [
-        `${artist} - ${title} Official Audio`,
         `${artist} - ${title} Lyric Video`,
-        `${artist} - ${title} Audio`,
-        `${artist} - ${title} Topic`, // "Topic" channels often have official audio
-        `${artist} - ${title}` // Fallback
+        `${artist} - ${title} Official Audio`,
     ];
 
     const youtubeApiSearchUrl = 'https://www.googleapis.com/youtube/v3/search';
@@ -87,7 +96,7 @@ async function searchYouTubeVideo(title, artist, spotifyDurationMs) {
                     type: 'video',
                     videoCategoryId: '10', // Music category
                     videoEmbeddable: 'true',
-                    maxResults: 5, // Check top 5 results for each query type
+                    maxResults: 3, // Check top 5 results for each query type
                     key: YOUTUBE_API_KEY
                 }
             });
@@ -159,23 +168,22 @@ async function searchYouTubeVideo(title, artist, spotifyDurationMs) {
     return null;
 }
 
-async function fetchTracksFromSpecificPlaylist(playlistId, trackLimit = 50) {
-    const token = await getAccessToken();
-    if (!token) throw new Error('Missing Spotify access token.');
+async function fetchTracksFromSpecificPlaylist(playlistId, trackLimit = 50, token) {
+    if (!token) token = await getAccessToken(); // Get token if not provided
+    if (!token) throw new Error('Missing Spotify access token for fetching playlist tracks.');
 
     try {
         const response = await axios.get(`${SPOTIFY_API_BASE_URL}/playlists/${playlistId}/tracks`, {
             headers: { 'Authorization': `Bearer ${token}` },
             params: {
-                fields: 'items(track(id,name,artists(name),album(images),duration_ms))', // Get essential metadata
+                fields: 'items(track(id,name,artists(name),album(images),duration_ms))',
                 limit: trackLimit,
                 market: SPOTIFY_MARKET
             }
         });
-
         const tracks = response.data.items
             .map(item => item.track)
-            .filter(track => track && track.id && track.name && track.artists && track.artists.length > 0) // Basic validation
+            .filter(track => track && track.id && track.name && track.artists && track.artists.length > 0 && track.duration_ms) // Ensure essential metadata + duration
             .map(track => ({
                 id: track.id,
                 title: track.name,
@@ -183,7 +191,6 @@ async function fetchTracksFromSpecificPlaylist(playlistId, trackLimit = 50) {
                 album_art_url: track.album && track.album.images && track.album.images.length > 0 ? track.album.images[0].url : null,
                 duration_ms: track.duration_ms
             }));
-        
         console.log(`[Spotify] Fetched ${tracks.length} track metadata entries from playlist ${playlistId}.`);
         return tracks;
     } catch (error) {
@@ -193,16 +200,13 @@ async function fetchTracksFromSpecificPlaylist(playlistId, trackLimit = 50) {
     }
 }
 
-async function fetchFullTrackDetails(trackIds) {
-    if (!trackIds || trackIds.length === 0) {
-        return [];
-    }
-    const token = await getAccessToken();
+async function fetchFullTrackDetails(trackIds, token) {
+    if (!trackIds || trackIds.length === 0) return [];
+    if (!token) token = await getAccessToken();
     if (!token) throw new Error('Missing Spotify access token for full track details.');
 
     const MAX_IDS_PER_REQUEST = 50;
-    let fetchedSpotifyTracks = [];
-
+    let allFetchedTrackDetails = [];
     for (let i = 0; i < trackIds.length; i += MAX_IDS_PER_REQUEST) {
         const batchIds = trackIds.slice(i, i + MAX_IDS_PER_REQUEST);
         try {
@@ -211,206 +215,301 @@ async function fetchFullTrackDetails(trackIds) {
                 params: { ids: batchIds.join(','), market: SPOTIFY_MARKET }
             });
             if (response.data && response.data.tracks) {
-                fetchedSpotifyTracks = fetchedSpotifyTracks.concat(
-                    response.data.tracks.filter(t => t && t.id && t.name && t.artists && t.artists.length > 0)
-                );
+                const validTracks = response.data.tracks
+                    .filter(t => t && t.id && t.name && t.artists && t.artists.length > 0 && t.duration_ms && t.album)
+                    .map(track => ({
+                        id: track.id,
+                        title: track.name,
+                        artist: track.artists.map(artist => artist.name).join(', '),
+                        album_art_url: track.album && track.album.images.length > 0 ? track.album.images[0].url : null,
+                        duration_ms: track.duration_ms
+                    }));
+                allFetchedTrackDetails = allFetchedTrackDetails.concat(validTracks);
             }
         } catch (error) {
             const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
             console.error(`[Spotify] Error fetching batch of full track details: ${errorMsg}`);
         }
     }
-    
-    console.log(`[Spotify] Received ${fetchedSpotifyTracks.length} valid Spotify track objects for ${trackIds.length} requested IDs.`);
-    return fetchedSpotifyTracks.map(track => ({
-        id: track.id,
-        title: track.name,
-        artist: track.artists.map(artist => artist.name).join(', '),
-        album_art_url: track.album && track.album.images.length > 0 ? track.album.images[0].url : null,
-        duration_ms: track.duration_ms
-    }));
+    console.log(`[Spotify] Received ${allFetchedTrackDetails.length} valid Spotify track objects for ${trackIds.length} requested IDs.`);
+    return allFetchedTrackDetails;
 }
 
-async function getTracksForDailyChallenge(desiredTrackCount = DAILY_SONG_COUNT) {
-    const token = await getAccessToken();
-    if (!token) throw new Error('Missing Spotify access token for daily challenge.');
-
-    let tracksForChallenge = [];
-    let spotifyTrackCandidates = [];
-    // Fetch more Spotify tracks initially to account for YouTube misses and ensure variety.
-    const initialFetchMultiplier = 5; 
+async function fetchTracksFromTopPlaylistsStrategy(token, desiredTrackCount, initialFetchMultiplier) {
+    console.log(`[Spotify Strategy 1 - Top Playlists] Searching for "Top 50" or "Top 100" playlists (market: ${SPOTIFY_MARKET})...`);
+    let candidates = [];
+    // Try a few different search queries for top playlists
+    const searchQueries = ["Top 50"]; 
     const spotifyFetchLimit = desiredTrackCount * initialFetchMultiplier;
 
-    // Strategy 1: Try fetching from a dynamically selected category playlist
-    try {
-        console.log(`[Spotify Strategy 1] Dynamically selecting category (market: ${SPOTIFY_MARKET})...`);
-        const categoriesResponse = await axios.get(`${SPOTIFY_API_BASE_URL}/browse/categories`, {
-            headers: { 'Authorization': `Bearer ${token}`},
-            params: { country: SPOTIFY_MARKET, limit: 20 }
-        });
+    for (const playlistQuery of searchQueries) {
+        if (candidates.length >= spotifyFetchLimit) break; // Stop if we have enough candidates
 
-        if (categoriesResponse.data.categories.items && categoriesResponse.data.categories.items.length > 0) {
-            const availableCategories = categoriesResponse.data.categories.items;
-            const selectedCategory = availableCategories[Math.floor(Math.random() * availableCategories.length)];
-            console.log(`[Spotify Strategy 1] Selected category: "${selectedCategory.name}" (ID: ${selectedCategory.id}). Fetching playlists...`);
-
-            const categoryPlaylistsResponse = await axios.get(`${SPOTIFY_API_BASE_URL}/browse/categories/${selectedCategory.id}/playlists`, {
-                headers: { 'Authorization': `Bearer ${token}` },
-                params: { country: SPOTIFY_MARKET, limit: 10 }
-            });
-
-            if (categoryPlaylistsResponse.data.playlists.items && categoryPlaylistsResponse.data.playlists.items.length > 0) {
-                const playlists = categoryPlaylistsResponse.data.playlists.items;
-                const selectedPlaylist = playlists[Math.floor(Math.random() * playlists.length)];
-                console.log(`[Spotify Strategy 1] Selected playlist: "${selectedPlaylist.name}" (ID: ${selectedPlaylist.id}). Fetching ${spotifyFetchLimit} metadata entries...`);
-                spotifyTrackCandidates = await fetchTracksFromSpecificPlaylist(selectedPlaylist.id, spotifyFetchLimit);
-            } else {
-                 console.warn(`[Spotify Strategy 1] No playlists found for category ${selectedCategory.id}.`);
-            }
-        } else {
-            console.warn(`[Spotify Strategy 1] No categories found for market ${SPOTIFY_MARKET}.`);
-        }
-    } catch (error) {
-        const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
-        console.warn(`[Spotify Strategy 1] Failed: ${errorMsg}. Proceeding to fallback.`);
-    }
-
-    // Strategy 2: Fallback to New Releases if Strategy 1 yielded too few candidates
-    if (spotifyTrackCandidates.length < desiredTrackCount) {
-        console.log(`[Spotify Strategy 2] Fallback: Fetching new releases (market: ${SPOTIFY_MARKET}). Strategy 1 yielded ${spotifyTrackCandidates.length} candidates.`);
         try {
-            const newReleasesResponse = await axios.get(`${SPOTIFY_API_BASE_URL}/browse/new-releases`, {
+            const searchResponse = await axios.get(`${SPOTIFY_API_BASE_URL}/search`, {
                 headers: { 'Authorization': `Bearer ${token}` },
-                params: { country: SPOTIFY_MARKET, limit: Math.max(10, Math.ceil(desiredTrackCount / 2)) } // Fetch enough albums
+                params: {
+                    q: playlistQuery,
+                    type: 'playlist',
+                    market: SPOTIFY_MARKET,
+                    limit: 5 // Get a few matching playlists
+                }
             });
 
-            if (newReleasesResponse.data.albums.items && newReleasesResponse.data.albums.items.length > 0) {
-                let albumTrackIds = [];
-                for (const album of newReleasesResponse.data.albums.items) { // Iterate through fetched albums
-                    if (albumTrackIds.length >= spotifyFetchLimit) break;
-                    const albumTracksResponse = await axios.get(`${SPOTIFY_API_BASE_URL}/albums/${album.id}/tracks`, {
-                        headers: { 'Authorization': `Bearer ${token}` },
-                        params: { market: SPOTIFY_MARKET, limit: 50 } // Get all tracks from album
-                    });
-                    if (albumTracksResponse.data.items) {
-                        albumTrackIds.push(...albumTracksResponse.data.items.map(track => track.id).filter(id => id));
-                    }
-                }
+            if (searchResponse.data.playlists && searchResponse.data.playlists.items.length > 0) {
                 
-                if (albumTrackIds.length > 0) {
-                    console.log(`[Spotify Strategy 2] Fetched ${albumTrackIds.length} track IDs from new release albums. Fetching details...`);
-                    // Fetch details only for needed amount to avoid excessive API calls
-                    const uniqueAlbumTrackIds = [...new Set(albumTrackIds)]; // Ensure unique IDs
-                    const detailedTracks = await fetchFullTrackDetails(uniqueAlbumTrackIds.slice(0, spotifyFetchLimit - spotifyTrackCandidates.length));
+                const foundPlaylists = searchResponse.data.playlists.items;
+                // Shuffle found playlists to vary selection
+                const shuffledPlaylists = [...foundPlaylists].sort(() => 0.5 - Math.random()).filter((Boolean))
+
+                // Try fetching tracks from one or two of these playlists
+                for (let i=0; i < Math.min(2, shuffledPlaylists.length); i++) {
+                    if (candidates.length >= spotifyFetchLimit) break;
+                    const selectedPlaylist = shuffledPlaylists[i];
+                    console.log(`[Spotify Strategy 1] Found playlist: "${selectedPlaylist.name}" (ID: ${selectedPlaylist.id}) from query "${playlistQuery}". Fetching tracks...`);
+                    const tracksFromPlaylist = await fetchTracksFromSpecificPlaylist(selectedPlaylist.id, spotifyFetchLimit - candidates.length, token);
                     
-                    // Add to candidates, avoid duplicates by ID
-                    const existingCandidateIds = new Set(spotifyTrackCandidates.map(tc => tc.id));
-                    detailedTracks.forEach(track => {
+                    // Add to candidates, avoiding duplicates by ID
+                    const existingCandidateIds = new Set(candidates.map(tc => tc.id));
+                    tracksFromPlaylist.forEach(track => {
                         if (!existingCandidateIds.has(track.id)) {
-                            spotifyTrackCandidates.push(track);
+                            candidates.push(track);
                             existingCandidateIds.add(track.id);
                         }
                     });
+                    console.log(`[Spotify Strategy 1] Added ${tracksFromPlaylist.length} tracks. Total candidates: ${candidates.length}`);
                 }
-                 console.log(`[Spotify Strategy 2] Total candidates after new releases: ${spotifyTrackCandidates.length}`);
             } else {
-                console.warn(`[Spotify Strategy 2] No new album releases found for market ${SPOTIFY_MARKET}.`);
+                console.log(`[Spotify Strategy 1] No playlists found for query "${playlistQuery}".`);
             }
         } catch (error) {
-            const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
-            console.error(`[Spotify Strategy 2] Failed: ${errorMsg}`);
+            const errorMsg = error.response ? JSON.stringify(error.response.data.error || error.response.data) : error.message;
+            console.warn(`[Spotify Strategy 1] Error searching for playlist query "${playlistQuery}": ${errorMsg}.`);
         }
     }
-    
-    // Shuffle candidates for variety before picking for Youtube
-    if (spotifyTrackCandidates.length > 0) {
-        for (let i = spotifyTrackCandidates.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [spotifyTrackCandidates[i], spotifyTrackCandidates[j]] = [spotifyTrackCandidates[j], spotifyTrackCandidates[i]];
-        }
-    }
-    
-    console.log(`Processing ${spotifyTrackCandidates.length} unique Spotify track candidates to find ${desiredTrackCount} YouTube videos.`);
-    for (const spotifyTrack of spotifyTrackCandidates) {
-        if (tracksForChallenge.length >= desiredTrackCount) {
-            break; 
-        }
-        console.log(`Attempting to find YouTube video for: ${spotifyTrack.artist} - ${spotifyTrack.title} (Spotify ID: ${spotifyTrack.id})`);
-        const youtubeVideoId = await searchYouTubeVideo(spotifyTrack.title, spotifyTrack.artist, spotifyTrack.duration_ms);
+    console.log(`[Spotify Strategy 1 - Top Playlists] Yielded ${candidates.length} candidates.`);
+    return candidates;
+}
 
-        if (youtubeVideoId) {
-            tracksForChallenge.push({
-                source_name: 'spotify', // Metadata source
-                track_id_from_source: spotifyTrack.id,
-                title: spotifyTrack.title,
-                artist: spotifyTrack.artist,
-                album_art_url: spotifyTrack.album_art_url,
-                duration_ms: spotifyTrack.duration_ms,
-                youtube_video_id: youtubeVideoId // Crucial new field
-            });
-            console.log(`SUCCESS: Added to daily challenge: "${spotifyTrack.title}" with YouTube ID ${youtubeVideoId}. Count: ${tracksForChallenge.length}/${desiredTrackCount}`);
+// --- New Helper Function for Strategy 2: New Releases ---
+async function fetchTracksFromNewReleasesStrategy(token, desiredTrackCount, initialFetchMultiplier) {
+    console.log(`[Spotify Strategy 2 - New Releases] Fetching new releases (market: ${SPOTIFY_MARKET})...`);
+    let candidates = [];
+    const spotifyFetchLimit = desiredTrackCount * initialFetchMultiplier;
+
+    try {
+        const newReleasesResponse = await axios.get(`${SPOTIFY_API_BASE_URL}/browse/new-releases`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+            params: { country: SPOTIFY_MARKET, limit: Math.max(10, Math.ceil(desiredTrackCount / 2)) } // Fetch enough albums
+        });
+
+        if (newReleasesResponse.data.albums.items && newReleasesResponse.data.albums.items.length > 0) {
+            let albumTrackIds = [];
+            // Collect track IDs from several new albums
+            for (const album of newReleasesResponse.data.albums.items) {
+                if (albumTrackIds.length >= spotifyFetchLimit) break;
+                if (album.album_type === 'album' || album.album_type === 'single') { // Ensure it's an album or single
+                    const albumTracksResponse = await axios.get(`${SPOTIFY_API_BASE_URL}/albums/${album.id}/tracks`, {
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        params: { market: SPOTIFY_MARKET, limit: 50 }
+                    });
+                    if (albumTracksResponse.data.items) {
+                        albumTrackIds.push(...albumTracksResponse.data.items
+                            .filter(track => track && track.id) // Ensure track and track.id exist
+                            .map(track => track.id));
+                    }
+                }
+            }
+            
+            if (albumTrackIds.length > 0) {
+                console.log(`[Spotify Strategy 2] Fetched ${albumTrackIds.length} track IDs from new release albums. Fetching details...`);
+                const uniqueAlbumTrackIds = [...new Set(albumTrackIds)];
+                const detailedTracks = await fetchFullTrackDetails(uniqueAlbumTrackIds.slice(0, spotifyFetchLimit), token);
+                candidates = detailedTracks; // Replace or concat based on desired behavior
+            }
         } else {
-            console.warn(`SKIP: No suitable YouTube video for ${spotifyTrack.artist} - ${spotifyTrack.title}.`);
+            console.warn(`[Spotify Strategy 2] No new album releases found for market ${SPOTIFY_MARKET}.`);
         }
+    } catch (error) {
+        const errorMsg = error.response ? JSON.stringify(error.response.data.error || error.response.data) : error.message;
+        console.error(`[Spotify Strategy 2 - New Releases] Failed: ${errorMsg}`);
+    }
+    console.log(`[Spotify Strategy 2 - New Releases] Yielded ${candidates.length} candidates.`);
+    return candidates;
+}
+
+
+
+async function getTracksForDailyChallenge(desiredTrackCount = DAILY_SONG_COUNT) {
+    const token = await getAccessToken(); // For Spotify calls
+    if (!token) throw new Error('Missing Spotify access token for daily challenge.');
+
+    let tracksForChallenge = [];
+    let finalSpotifyTrackCandidates = [];
+    const initialFetchMultiplier = 3;
+    const spotifyRequestLimit = desiredTrackCount * initialFetchMultiplier;
+
+    // --- New Primary Strategy: MusicBrainz by Genre, then enrich with Spotify ---
+    // Pick a few genres randomly or have a rotating list
+    const allPossibleGenres = ["pop", "rock", "electronic", "hip hop", "jazz", "classical", "folk", "r&b", "indie", "dance", "soul", "country"];
+    const shuffledGenres = [...allPossibleGenres].sort(() => 0.5 - Math.random());
+    const genresToFetch = shuffledGenres.slice(0, 3); // Fetch tracks from 3 random genres
+
+    try {
+        const musicBrainzTrackIdeas = await fetchTrackIdeasByGenreFromMusicBrainz(genresToFetch, 25, spotifyRequestLimit); // 25 tracks per genre
+        if (musicBrainzTrackIdeas.length > 0) {
+            console.log(`[Spotify Main] Enriching ${musicBrainzTrackIdeas.length} track ideas from MusicBrainz with Spotify details...`);
+            for (const trackIdea of musicBrainzTrackIdeas) {
+                if (finalSpotifyTrackCandidates.length >= spotifyRequestLimit) break;
+                
+                let searchQuery = `track:${trackIdea.title} artist:${trackIdea.artist}`;
+                if (trackIdea.album) {
+                    searchQuery += ` album:${trackIdea.album}`;
+                }
+                const spotifySearchResults = await searchTracksOnSpotify(searchQuery, 1, token);
+                
+                if (spotifySearchResults.length > 0) {
+                    const foundSpotifyTrack = spotifySearchResults[0];
+                    if (!finalSpotifyTrackCandidates.some(fc => fc.id === foundSpotifyTrack.id)) {
+                        // Assuming searchTracksOnSpotify returns {id, title, artist}, we need full details
+                        const detailedTracks = await fetchFullTrackDetails([foundSpotifyTrack.id], token);
+                        if (detailedTracks.length > 0 && detailedTracks[0].duration_ms && detailedTracks[0].album_art_url) {
+                            finalSpotifyTrackCandidates.push(detailedTracks[0]);
+                        }
+                    }
+                }
+            }
+            console.log(`[Spotify Main] Enriched ${finalSpotifyTrackCandidates.length} candidates via MusicBrainz + Spotify.`);
+        }
+    } catch (e) {
+        console.error("[Spotify Main] MusicBrainz strategy failed:", e.message);
     }
 
+    // --- Fallback Strategy 1: TheAudioDB (if you implemented it and want to keep it) ---
+    // if (finalSpotifyTrackCandidates.length < spotifyRequestLimit) {
+    //     console.log(`[Spotify Main] MusicBrainz strategy yielded ${finalSpotifyTrackCandidates.length}. Trying TheAudioDB.`);
+    //     const seedArtists = ["Taylor Swift", "Ed Sheeran", "Drake", /* ... more ... */];
+    //     const audioDBTrackIdeas = await fetchPopularTracksFromTheAudioDB(seedArtists, 2, spotifyRequestLimit - finalSpotifyTrackCandidates.length);
+    //     if (audioDBTrackIdeas.length > 0) { 
+    //         try {
+    //             const popularTrackIdeas = await fetchPopularTracksFromTheAudioDB(seedArtists, 3, spotifyRequestLimit); // Fetch up to spotifyRequestLimit raw ideas
+    //             if (popularTrackIdeas.length > 0) {
+    //                 console.log(`[Spotify Main] Enriching ${popularTrackIdeas.length} track ideas from TheAudioDB with Spotify details...`);
+    //                 for (const trackIdea of popularTrackIdeas) {
+    //                     if (finalSpotifyTrackCandidates.length >= spotifyRequestLimit) break;
+                        
+    //                     // Precise search on Spotify using title and artist
+    //                     const spotifySearchResults = await searchTracksOnSpotify(`track:${trackIdea.title} artist:${trackIdea.artist}`, 1, token); // searchTracksOnSpotify now takes token
+                        
+    //                     if (spotifySearchResults.length > 0) {
+    //                         const foundSpotifyTrack = spotifySearchResults[0];
+    //                         // Ensure we have full details, searchTracksOnSpotify should return the mapped structure
+    //                         // Check for duplicates before adding
+    //                         if (!finalSpotifyTrackCandidates.some(fc => fc.id === foundSpotifyTrack.id)) {
+    //                             // If searchTracksOnSpotify doesn't give full details like album_art_url, duration_ms,
+    //                             // you might need to call fetchFullTrackDetails here.
+    //                             // Assuming searchTracksOnSpotify now returns the detailed structure:
+    //                             if (foundSpotifyTrack.duration_ms && foundSpotifyTrack.album_art_url) {
+    //                                 finalSpotifyTrackCandidates.push(foundSpotifyTrack);
+    //                             } else {
+    //                                 // If basic search doesn't have all details, fetch full details
+    //                                 const detailedTracks = await fetchFullTrackDetails([foundSpotifyTrack.id], token);
+    //                                 if (detailedTracks.length > 0 && detailedTracks[0].duration_ms && detailedTracks[0].album_art_url) {
+    //                                     finalSpotifyTrackCandidates.push(detailedTracks[0]);
+    //                                 }
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+    //                 console.log(`[Spotify Main] Enriched ${finalSpotifyTrackCandidates.length} candidates via TheAudioDB + Spotify.`);
+    //             }
+    //         } catch (e) {
+    //             console.error("[Spotify Main] TheAudioDB strategy failed:", e.message);
+    //         }
+    //      }
+    // }
+
+
+    // --- Fallback Strategy 2: Spotify "Top Playlists" Search ---
+    if (finalSpotifyTrackCandidates.length < spotifyRequestLimit) {
+        console.log(`[Spotify Main] Still few candidates (${finalSpotifyTrackCandidates.length}). Trying Top Playlists on Spotify.`);
+        const needed = spotifyRequestLimit - finalSpotifyTrackCandidates.length;
+        const topPlaylistCandidates = await fetchTracksFromTopPlaylistsStrategy(token, Math.ceil(needed / initialFetchMultiplier) || desiredTrackCount, initialFetchMultiplier);
+        const existingIds = new Set(finalSpotifyTrackCandidates.map(tc => tc.id));
+        topPlaylistCandidates.forEach(track => {
+            if (!existingIds.has(track.id) && track.duration_ms && track.album_art_url) {
+                finalSpotifyTrackCandidates.push(track); existingIds.add(track.id);
+            }
+        });
+        console.log(`[Spotify Main] After Top Playlists, total candidates: ${finalSpotifyTrackCandidates.length}`);
+    }
+
+    // --- Fallback Strategy 3: Spotify New Releases ---
+    if (finalSpotifyTrackCandidates.length < spotifyRequestLimit) {
+        console.log(`[Spotify Main] Still few candidates (${finalSpotifyTrackCandidates.length}). Trying New Releases on Spotify.`);
+        const needed = spotifyRequestLimit - finalSpotifyTrackCandidates.length;
+        const newReleaseCandidates = await fetchTracksFromNewReleasesStrategy(token, Math.ceil(needed / initialFetchMultiplier) || desiredTrackCount, initialFetchMultiplier);
+        const existingIds = new Set(finalSpotifyTrackCandidates.map(tc => tc.id));
+        newReleaseCandidates.forEach(track => {
+            if (!existingIds.has(track.id) && track.duration_ms && track.album_art_url) {
+                finalSpotifyTrackCandidates.push(track); existingIds.add(track.id);
+            }
+        });
+        console.log(`[Spotify Main] After New Releases, total candidates: ${finalSpotifyTrackCandidates.length}`);
+    }
+    
+    // Shuffle and get YouTube videos
+    if (finalSpotifyTrackCandidates.length > 0) {
+        finalSpotifyTrackCandidates.sort(() => 0.5 - Math.random());
+        console.log(`[Spotify Main] Total ${finalSpotifyTrackCandidates.length} unique Spotify candidates. Processing for YouTube videos...`);
+        for (const spotifyTrack of finalSpotifyTrackCandidates) {
+            if (tracksForChallenge.length >= desiredTrackCount) break;
+            console.log(`[Youtube Prep] Finding video for: ${spotifyTrack.artist} - ${spotifyTrack.title} (Spotify ID: ${spotifyTrack.id})`);
+            const youtubeVideoId = await searchYouTubeVideo(spotifyTrack.title, spotifyTrack.artist, spotifyTrack.duration_ms);
+            if (youtubeVideoId) {
+                tracksForChallenge.push({
+                    source_name: 'spotify_via_musicbrainz', // Indicate discovery source
+                    track_id_from_source: spotifyTrack.id,
+                    title: spotifyTrack.title,
+                    artist: spotifyTrack.artist,
+                    album_art_url: spotifyTrack.album_art_url,
+                    duration_ms: spotifyTrack.duration_ms,
+                    youtube_video_id: youtubeVideoId
+                });
+                console.log(`SUCCESS: Added to daily challenge: "${spotifyTrack.title}". Count: ${tracksForChallenge.length}/${desiredTrackCount}`);
+            } else {
+                console.warn(`SKIP (No YouTube Video): No suitable YouTube video found for ${spotifyTrack.artist} - ${spotifyTrack.title}.`);
+            }
+        }
+    }
+    
     if (tracksForChallenge.length === 0) {
-        console.error('CRITICAL: Failed to get ANY tracks for daily challenge after all strategies and Youtube.');
+        console.error('CRITICAL: Failed to get ANY tracks for daily challenge after all strategies.');
         throw new Error('Failed to curate any tracks for the daily challenge.');
     }
     if (tracksForChallenge.length < desiredTrackCount) {
-        console.warn(`WARNING: Could only secure ${tracksForChallenge.length} tracks with YouTube videos out of ${desiredTrackCount} desired.`);
+        console.warn(`WARNING: Could only secure ${tracksForChallenge.length} tracks out of ${desiredTrackCount} desired.`);
     }
-
-    return tracksForChallenge.slice(0, desiredTrackCount); // Ensure correct count is returned
+    return tracksForChallenge.slice(0, desiredTrackCount);
 }
 
-async function searchTracksOnSpotify(query, limit = 5) {
-    const token = await getAccessToken(); // Uses your existing getAccessToken function
-    if (!token) {
-        console.error('Spotify search failed: Missing access token.');
-        throw new Error('Missing Spotify access token for search.');
-    }
-
-    // Ensure SPOTIFY_API_BASE_URL from your config is the correct live Spotify API URL
-    // e.g., https://api.spotify.com/v1
-    const spotifySearchUrl = `${SPOTIFY_API_BASE_URL}/search`;
-
+async function searchTracksOnSpotify(query, limit = 5, token) {
+    if (!token) token = await getAccessToken();
+    // ... rest of your existing searchTracksOnSpotify for autocomplete
+    // This function should return the mapped structure {id, title, artist}
+    // Ensure it's robust.
+    if (!token) { console.error('Spotify autocomplete failed: Missing token.'); return []; }
     try {
-        console.log(`[Spotify Search] Searching for query: "${query}" at URL: ${spotifySearchUrl}`);
-        const response = await axios.get(spotifySearchUrl, {
+        const response = await axios.get(`${SPOTIFY_API_BASE_URL}/search`, {
             headers: { 'Authorization': `Bearer ${token}` },
-            params: {
-                q: query,
-                type: 'track',
-                market: SPOTIFY_MARKET, // From your config.js
-                limit: limit
-            }
+            params: { q: query, type: 'track', market: SPOTIFY_MARKET, limit: limit }
         });
-
         if (response.data && response.data.tracks && response.data.tracks.items) {
             return response.data.tracks.items.map(track => ({
-                id: track.id, // Spotify track ID
-                title: track.name,
-                artist: track.artists.map(artist => artist.name).join(', '),
-                // You could include album_art_url if your frontend autocomplete can show it:
-                // album_art_url: track.album && track.album.images && track.album.images.length > 0 ? track.album.images[0].url : null,
+                id: track.id, title: track.name, artist: track.artists.map(a => a.name).join(', ')
             }));
-        }
-        return []; // Return empty array if no tracks found or unexpected structure
-    } catch (error) {
-        const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
-        console.error(`[Spotify Search] Error searching tracks on Spotify for query "${query}": ${errorMsg}`);
-        
-        // Invalidate token if it's an auth error, so next call to getAccessToken tries to refresh
-        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-            spotifyAccessToken = null; 
-        }
-        // Re-throw the error so the route handler can send a 500, or return empty array.
-        // For autocomplete, often better to return [] on error than break the UI.
-        // Let's return empty for robustness in autocomplete.
-        return []; 
-    }
+        } return [];
+    } catch (error) { console.error(`Error in searchTracksOnSpotify for query "${query}":`, error.message); return []; }
 }
 
 // New function to save suggestions to cache
@@ -457,12 +556,131 @@ async function saveSuggestionsToCache(suggestions) {
     });
 }
 
+async function fetchPopularTracksFromTheAudioDB(seedArtistNames, tracksPerArtist = 3, desiredTotalTracks = 20) {
+    if (!THEAUDIODB_API_KEY) {
+        console.warn('[TheAudioDB] API key not configured or missing. Skipping this strategy.');
+        return [];
+    }
+    if (!seedArtistNames || seedArtistNames.length === 0) {
+        console.warn('[TheAudioDB] No seed artist names provided. Skipping this strategy.');
+        return [];
+    }
+
+    console.log(`[TheAudioDB Strategy] Fetching top tracks for ${seedArtistNames.length} seed artists.`);
+    let trackIdeas = []; // Will store { title: string, artist: string }
+
+    // Shuffle artists to get variety if we don't go through all of them
+    const shuffledArtists = [...seedArtistNames].sort(() => 0.5 - Math.random());
+
+    for (const artistName of shuffledArtists) {
+        if (trackIdeas.length >= desiredTotalTracks) {
+            break; // Stop if we have enough ideas
+        }
+        try {
+            // TheAudioDB endpoint for an artist's "most loved" tracks (often up to 10, sometimes more or less)
+            // For free/public key '1' or '2', this might be what's available as "track-top10.php"
+            const url = `${THEAUDIODB_API_BASE_URL}/${THEAUDIODB_API_KEY}/track-top10.php?s=${encodeURIComponent(artistName)}`;
+            console.log(`[TheAudioDB] Fetching top tracks for "${artistName}" from ${url}`);
+            const response = await axios.get(url);
+
+            if (response.data && response.data.track && response.data.track.length > 0) {
+                const artistTracks = response.data.track
+                    .filter(t => t.strTrack && t.strArtist) // Ensure essential fields are present
+                    .slice(0, tracksPerArtist) // Take specified number of tracks per artist
+                    .map(t => ({
+                        title: t.strTrack,
+                        artist: t.strArtist // TheAudioDB usually returns the main artist here
+                        // Note: TheAudioDB might also provide t.strMusicBrainzID or t.idSpotify
+                        // If t.idSpotify is reliably present, that's a huge win!
+                    }));
+                
+                console.log(`[TheAudioDB] Found ${artistTracks.length} tracks for "${artistName}".`);
+                trackIdeas = trackIdeas.concat(artistTracks);
+                // Simple duplicate check based on title and artist for now within this batch
+                trackIdeas = trackIdeas.filter((track, index, self) =>
+                    index === self.findIndex((t) => (
+                        t.title === track.title && t.artist === track.artist
+                    ))
+                );
+
+            } else {
+                console.log(`[TheAudioDB] No tracks found for "${artistName}".`);
+            }
+        } catch (error) {
+            const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
+            console.warn(`[TheAudioDB] Error fetching top tracks for "${artistName}": ${errorMsg}`);
+            // Continue to next artist if one fails
+        }
+    }
+
+    console.log(`[TheAudioDB Strategy] Yielded ${trackIdeas.length} raw track ideas.`);
+    return trackIdeas.slice(0, desiredTotalTracks); // Return up to the desired total
+}
+
+async function fetchTrackIdeasByGenreFromMusicBrainz(seedGenres, tracksPerGenre = 20, desiredTotalTracks = 50) {
+    if (!seedGenres || seedGenres.length === 0) {
+        console.warn('[MusicBrainz] No seed genres provided. Skipping this strategy.');
+        return [];
+    }
+    console.log(`[MusicBrainz Strategy] Fetching up to ${tracksPerGenre} tracks for genres: ${seedGenres.join(', ')}.`);
+    let trackIdeas = []; // Will store { title: string, artist: string, album?: string }
+
+    for (const genre of seedGenres) {
+        if (trackIdeas.length >= desiredTotalTracks) break;
+        try {
+            const url = `${MUSICBRAINZ_API_BASE_URL}/recording?query=tag:${encodeURIComponent(genre)}&fmt=json&limit=${tracksPerGenre}&inc=artist-credits+release-groups`;
+            console.log(`[MusicBrainz] Fetching tracks for genre "${genre}" from ${url}`);
+            
+            const response = await axios.get(url, {
+                headers: { 'User-Agent': MB_USER_AGENT }
+            });
+
+            if (response.data && response.data.recordings && response.data.recordings.length > 0) {
+                const genreTracks = response.data.recordings
+                    .filter(r => r.title && r['artist-credit'] && r['artist-credit'].length > 0)
+                    .map(r => {
+                        const artistName = r['artist-credit'].map(ac => ac.name).join(' & ');
+                        // Try to get an album title from the first release group if available
+                        const albumTitle = (r['release-groups'] && r['release-groups'].length > 0) ? r['release-groups'][0].title : undefined;
+                        return {
+                            title: r.title,
+                            artist: artistName,
+                            album: albumTitle 
+                            // MusicBrainz ID for track: r.id
+                            // MusicBrainz ID for artist (first one): r['artist-credit'][0].artist.id
+                        };
+                    });
+                
+                console.log(`[MusicBrainz] Found ${genreTracks.length} tracks for genre "${genre}".`);
+                
+                trackIdeas = trackIdeas.concat(genreTracks);
+                // Simple duplicate check
+                trackIdeas = trackIdeas.filter((track, index, self) =>
+                    index === self.findIndex((t) => (t.title === track.title && t.artist === track.artist))
+                );
+            } else {
+                console.log(`[MusicBrainz] No tracks found for genre "${genre}".`);
+            }
+            await delay(1100); // Respect MusicBrainz rate limit (1 req/sec)
+        } catch (error) {
+            const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
+            console.warn(`[MusicBrainz] Error fetching tracks for genre "${genre}": ${errorMsg}`);
+            // Continue to next genre if one fails
+        }
+    }
+    console.log(`[MusicBrainz Strategy] Yielded ${trackIdeas.length} raw track ideas.`);
+    return trackIdeas.slice(0, desiredTotalTracks);
+}
 
 
 
+console.log('[MUSIC_SOURCE_DEBUG] Defining module.exports for music-source-service.');
 module.exports = {
     getAccessToken,
     getTracksForDailyChallenge,
     searchTracksOnSpotify,
-    saveSuggestionsToCache // Export the new function
+    saveSuggestionsToCache,
+    fetchTrackIdeasByGenreFromMusicBrainz // Exporting the new helper
+    // Remove fetchPopularTracksFromTheAudioDB if replaced, or keep if used as fallback.
 };
+console.log('[MUSIC_SOURCE_DEBUG] music-source-service.js module.exports defined.');

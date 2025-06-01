@@ -71,7 +71,7 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy {
   private subscriptions = new Subscription();
 
   constructor() {
-    this.isDev = isDevMode();
+    this.isDev = false &&isDevMode();
     if (isPlatformBrowser(this.platformId)) {
       this.todayDateString = this.getTodayDateString();
     }
