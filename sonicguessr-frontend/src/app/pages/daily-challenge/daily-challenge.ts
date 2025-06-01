@@ -1,14 +1,14 @@
 // src/app/pages/daily-challenge/daily-challenge.ts
-import { Component, OnInit, inject, ViewChild, AfterViewInit, isDevMode, PLATFORM_ID, OnDestroy } from '@angular/core'; // Added OnDestroy
+import { Component, OnInit, inject, ViewChild, AfterViewInit, isDevMode, PLATFORM_ID, OnDestroy } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
-// Ensure DailyChallengeResponse is imported from your service
-import { ChallengeService, GuessPayload, GuessResponse, DailyChallengeResponse } from '../../services/challenge'; // Adjusted path to service, ensure DailyChallengeResponse is exported
+import { ChallengeService, GuessPayload, GuessResponse, DailyChallengeResponse } from '../../services/challenge'; // Ensure DailyChallengeResponse is imported
 import { DailyChallengeSong } from '../../models/daily-song.model';
 import { AudioPlayer } from '../../components/audio-player/audio-player';
 import { GuessInput } from '../../components/guess-input/guess-input';
 import { FeedbackDisplay } from '../../components/feedback-display/feedback-display';
-import { AuthService } from '../../services/auth'; // <<< IMPORT AuthService
-import { Subscription } from 'rxjs'; // <<< IMPORT Subscription
+import { AuthService } from '../../services/auth'; // For isAuthenticated
+import { Subscription } from 'rxjs';
+
 
 
 const snippetLevelsData = [
@@ -22,6 +22,7 @@ const snippetLevelsData = [
 ];
 
 const STORAGE_KEY_PREFIX = 'sonicGuessrDailyState_';
+const GUEST_COMPLETED_KEY_PREFIX = 'sonicGuessrGuestCompleted_'; // For guest completion
 
 @Component({
   selector: 'app-daily-challenge-page',
@@ -30,10 +31,10 @@ const STORAGE_KEY_PREFIX = 'sonicGuessrDailyState_';
   templateUrl: './daily-challenge.html',
   styleUrls: ['./daily-challenge.scss']
 })
-export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy { // Added OnDestroy
+export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy {
   
   private challengeService = inject(ChallengeService);
-  private authService = inject(AuthService); // <<< INJECT AuthService
+  private authService = inject(AuthService);
   private platformId = inject(PLATFORM_ID);
   
   dailySongs: DailyChallengeSong[] = [];
@@ -50,6 +51,7 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy { // Add
   public isDev: boolean = false;
   public albumArtStyle: string = '';
   public isAlbumArtLoading: boolean = false;
+  // public isAudioPlaying: boolean = false; // Not in your provided TS, keep out unless you added it for play/pause
 
   totalDailyScore: number = 0;
   activeSong: DailyChallengeSong | null = null;
@@ -63,11 +65,10 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy { // Add
 
   @ViewChild(AudioPlayer) audioPlayerRef!: AudioPlayer;
 
-  // Properties for "once per day" logic
-  public challengeCompletedTodayByPlayer: boolean = false; // <<< NEW
-  public isAuthenticated: boolean = false;                // <<< NEW
+  public challengeCompletedTodayByPlayer: boolean = false; // Will be true if auth user played OR guest played (in this session)
+  public isAuthenticated: boolean = false;
 
-  private subscriptions = new Subscription(); // <<< NEW for managing subscriptions
+  private subscriptions = new Subscription();
 
   constructor() {
     this.isDev = isDevMode();
@@ -96,7 +97,7 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy { // Add
         console.log('DailyChallenge SSR: Song fetch and state load deferred to client.');
     }
   }
-  
+    
   fetchSongsAndSetInitialState(): void {
     this.isLoading = true;
     this.error = null;
@@ -105,18 +106,27 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy { // Add
 
     this.subscriptions.add(
       this.challengeService.getDailySongs().subscribe({
-        next: (response: DailyChallengeResponse) => { 
+        next: (response: DailyChallengeResponse) => {
           this.dailySongs = response.songs || [];
-          this.challengeCompletedTodayByPlayer = this.isAuthenticated ? response.challengeCompletedToday : false;
           this.isLoading = false;
-          console.log('Daily songs response:', response, 'Challenge completed by player:', this.challengeCompletedTodayByPlayer);
+          console.log('Daily songs response:', response);
+
+          if (this.isAuthenticated) {
+            this.challengeCompletedTodayByPlayer = response.challengeCompletedToday;
+          } else {
+            // For guests, check localStorage
+            this.challengeCompletedTodayByPlayer = this.checkGuestCompletionLocalStorage();
+          }
+          console.log('Challenge completed today status:', this.challengeCompletedTodayByPlayer);
 
           if (this.challengeCompletedTodayByPlayer) {
-            this.feedbackDisplay_message = "You've already completed today's challenge! Check the leaderboard or come back tomorrow.";
+            this.feedbackDisplay_message = this.isAuthenticated ? 
+                "You've already completed today's challenge! Check the leaderboard or come back tomorrow." :
+                "You've completed today's guest session! Log in to save scores or come back tomorrow.";
             this.feedbackDisplay_type = 'info';
             this.activeSong = null; 
             this.activeSongIndex = -1;
-            if (isPlatformBrowser(this.platformId)) {
+            if (isPlatformBrowser(this.platformId) && !this.isAuthenticated) { // Clear guest progress if completed
                 localStorage.removeItem(this.getStorageKey());
             }
           } else if (this.dailySongs.length > 0) {
@@ -135,6 +145,9 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy { // Add
     );
   }
 
+  private getGuestStorageKey(): string {
+    return `${GUEST_COMPLETED_KEY_PREFIX}${this.todayDateString}`;
+  }
 
 
   ngAfterViewInit(): void {
@@ -147,10 +160,22 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy { // Add
     return `${STORAGE_KEY_PREFIX}${this.todayDateString}`;
   }
 
+  private checkGuestCompletionLocalStorage(): boolean {
+    if (!isPlatformBrowser(this.platformId)) return false;
+    return localStorage.getItem(this.getGuestStorageKey()) === 'true';
+  }
+
+  private markGuestCompletionInLocalStorage(): void {
+    if (!isPlatformBrowser(this.platformId) || this.isAuthenticated) return; // Only for guests
+    localStorage.setItem(this.getGuestStorageKey(), 'true');
+    console.log("Guest completion marked in localStorage for today.");
+  }
+
   private loadGameStateOrDefault(): void {
     if (!isPlatformBrowser(this.platformId)) return;
-    if (this.challengeCompletedTodayByPlayer && this.isAuthenticated) {
-        console.log("Not loading saved game state: challenge already marked as completed for today by this user.");
+    // If challenge is already marked as completed for this session (auth or guest), don't load.
+    if (this.challengeCompletedTodayByPlayer) {
+        console.log("Not loading saved game state: challenge already marked as completed for today.");
         return;
     }
 
@@ -158,10 +183,10 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy { // Add
     if (savedStateString) {
       try {
         const savedState = JSON.parse(savedStateString);
-        if (savedState && typeof savedState.activeSongIndex === 'number') {
+        if (savedState && typeof savedState.activeSongIndex === 'number' && this.dailySongs.length > 0) {
           this.activeSongIndex = savedState.activeSongIndex;
           this.currentSnippetLevelIndex = savedState.currentSnippetLevelIndex || 0;
-          this.totalDailyScore = savedState.totalDailyScore || 0;
+          this.totalDailyScore = this.isAuthenticated ? (savedState.totalDailyScore || 0) : 0; // Guests score 0
           this.proceedToNextSongOnLoad = savedState.proceedToNextSongOnLoad || false;
           console.log('Loaded game state:', savedState);
 
@@ -213,11 +238,12 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy { // Add
 
 
   startChallengeWithFirstSong(): void {
-    if (this.challengeCompletedTodayByPlayer && this.isAuthenticated) {
-      // Feedback is set by fetchSongsAndSetInitialState if this condition is met on load.
-      // If called directly, set feedback here.
-      if (!this.feedbackDisplay_message) {
-        this.feedbackDisplay_message = "You've already played today's challenge!";
+    // Check if challenge already completed (for auth user or guest)
+    if (this.challengeCompletedTodayByPlayer) {
+      if (!this.feedbackDisplay_message) { // Set feedback if not already set by fetchSongsAndInitialState
+        this.feedbackDisplay_message = this.isAuthenticated ? 
+            "You've already played today's challenge!" : 
+            "You've completed today's guest session!";
         this.feedbackDisplay_type = 'info';
       }
       return;
@@ -226,14 +252,15 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy { // Add
         this.feedbackDisplay_message = "No songs loaded to start the challenge.";
         this.feedbackDisplay_type = 'info';
         return;
-    }
-    this.totalDailyScore = 0;
+    }    
+    this.totalDailyScore = 0; // Guests will always have 0, auth users reset here
     this.currentSnippetLevelIndex = 0;
     this.proceedToNextSongOnLoad = false;
     this.feedbackDisplay_message = ''; 
     this.feedbackDisplay_type = null;
     this.setActiveSong(0);
   }
+  
 
   setActiveSong(index: number): void {
     if (this.dailySongs && index >= 0 && index < this.dailySongs.length) {
@@ -316,8 +343,8 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy { // Add
 
 
   handleUserGuess(guess: string): void {
-    if (this.challengeCompletedTodayByPlayer && this.isAuthenticated) {
-      this.feedbackDisplay_message = "You've already completed today's challenge. No more guesses allowed.";
+    if (this.challengeCompletedTodayByPlayer && !this.isAuthenticated) { // Allow auth users to submit to see if backend 403s them
+      this.feedbackDisplay_message = "You've already completed today's guest session. Log in to save scores.";
       this.feedbackDisplay_type = 'info';
       return;
     }
@@ -439,6 +466,20 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy { // Add
       this.albumArtStyle = 'blur(0px)';
       this.saveGameState(); 
     }
+
+
+    if (this.activeSong === null && this.activeSongIndex === -1) { // End of challenge
+      this.challengeCompletedTodayByPlayer = true; // Mark as completed
+      if (!this.isAuthenticated) {
+          this.markGuestCompletionInLocalStorage();
+          this.feedbackDisplay_message = `You have completed all songs for today! Your total score: ${this.totalDailyScore}. Log in to save future scores!`;
+      } else {
+          this.feedbackDisplay_message = `You have completed all songs for today! Your total score: ${this.totalDailyScore}`;
+      }
+      this.feedbackDisplay_type = 'info'; 
+      this.saveGameState(); 
+    }
+
   }
 
   skipToNextSnippet(): void {

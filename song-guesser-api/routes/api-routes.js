@@ -21,7 +21,7 @@ function getTodayDateString() {
 // Middleware to check if user is authenticated (example, adjust as per your auth setup)
 // This is a simplified version. Your actual isAuthenticated might be from Passport.
 const isAuthenticated = (req, res, next) => {
-    if (req.isAuthenticated && req.isAuthenticated()) { // Check if req.isAuthenticated exists and then call it
+    if (req.isAuthenticated && req.isAuthenticated()) {
         return next();
     }
     res.status(401).json({ error: 'User not authenticated' });
@@ -34,7 +34,8 @@ router.get('/daily-challenge/songs', async (req, res) => {
     const dbInstance = getDb();
     let challengeCompletedToday = false;
 
-    if (req.isAuthenticated && req.isAuthenticated() && req.user) {
+    // Check completion status only if user is authenticated
+    if (req.isAuthenticated && req.isAuthenticated() && req.user && req.user.id) {
         try {
             const checkPlayedSql = `
                 SELECT 1 
@@ -54,8 +55,11 @@ router.get('/daily-challenge/songs', async (req, res) => {
             }
         } catch (err) {
             console.error("Error checking if challenge completed for user:", err.message);
-            // Proceed without this flag if error, or handle error differently
         }
+    } else {
+        // For guests, this flag from server will always be false.
+        // Client-side will need to manage guest "played today" state if desired.
+        challengeCompletedToday = false;
     }
 
     const sql = `
@@ -74,28 +78,32 @@ router.get('/daily-challenge/songs', async (req, res) => {
         if (!rows || rows.length === 0) {
             return res.status(404).json({ 
                 message: 'No daily challenge songs available for today. Please try again later.',
-                challengeCompletedToday // Still send this flag
+                songs: [], // Send empty array for songs
+                challengeCompletedToday 
             });
         }
         res.json({ 
-            songs: rows.map(row => ({ /* ...map row data if needed, or send as is... */ ...row })),
+            songs: rows, // Send rows directly as they are full song objects
             challengeCompletedToday 
         });
     });
 });
 
 // POST /api/daily-challenge/guess
-router.post('/daily-challenge/guess', isAuthenticated, async (req, res) => {
+router.post('/daily-challenge/guess', async (req, res) => {
     const { daily_challenge_song_id, guess, currentLevel } = req.body;
-    const userId = req.user.id; // From authenticated user
     const today = getTodayDateString();
     const dbInstance = getDb();
+    const userIsAuthenticated = req.isAuthenticated && req.isAuthenticated();
+    const userId = userIsAuthenticated && req.user ? req.user.id : null;
+
 
     if (!daily_challenge_song_id || !guess || currentLevel === undefined) {
         return res.status(400).json({ error: 'Missing required fields: daily_challenge_song_id, guess, currentLevel.' });
     }
 
     // First, check if the user has already completed/played today's challenge
+    if (userIsAuthenticated && userId) {
     try {
         const checkPlayedSql = `
             SELECT 1 
@@ -112,16 +120,17 @@ router.post('/daily-challenge/guess', isAuthenticated, async (req, res) => {
         });
 
         if (playedRow) {
-            console.log(`User ${userId} attempted to guess but has already completed challenge for ${today}.`);
+                console.log(`Authenticated User ${userId} attempted to guess but has already completed challenge for ${today}.`);
             return res.status(403).json({ 
-                correct: false, // To ensure frontend doesn't think it's a valid guess outcome
+                    correct: false,
                 message: "You have already completed today's challenge. Come back tomorrow!",
-                gameOverForSong: true // Treat it as game over for any song if challenge is done
+                    gameOverForSong: true 
             });
         }
     } catch (err) {
-        console.error("Error checking if challenge completed before guess:", err.message);
+            console.error("Error checking if challenge completed before guess (authenticated user):", err.message);
         return res.status(500).json({ error: "Server error checking game status." });
+        }
     }
 
     // Proceed with guess logic if challenge not yet completed today
@@ -137,53 +146,180 @@ router.post('/daily-challenge/guess', isAuthenticated, async (req, res) => {
 
         const isCorrect = guess.trim().toLowerCase() === song.title.trim().toLowerCase();
         let pointsAwarded = 0;
-        const maxLevels = SESSION_MAX_LEVELS || 5; // Use config or default
+        const maxLevels = SESSION_MAX_LEVELS || 5; 
+        let responsePayload = {};
 
         if (isCorrect) {
-            pointsAwarded = (maxLevels - parseInt(currentLevel) + 1) * 10; // Example scoring
-            pointsAwarded = Math.max(0, pointsAwarded); // Ensure points are not negative
+            if (userIsAuthenticated && userId) { // Only award and save points for authenticated users
+                pointsAwarded = (maxLevels - parseInt(currentLevel) + 1) * 10;
+                pointsAwarded = Math.max(0, pointsAwarded);
 
             const storeScoreSql = 'INSERT INTO scores (user_id, daily_challenge_id, score, guessed_at_level) VALUES (?, ?, ?, ?)';
             dbInstance.run(storeScoreSql, [userId, daily_challenge_song_id, pointsAwarded, currentLevel], (scoreErr) => {
                 if (scoreErr) {
-                    console.error("Error storing score:", scoreErr.message);
-                    // Continue to respond to user even if score saving fails, but log it.
+                        console.error("Error storing score for user:", userId, scoreErr.message);
+                    } else {
+                        console.log(`User ${userId} guessed correctly. Song ID: ${daily_challenge_song_id}, Points: ${pointsAwarded}`);
                 }
-                console.log(`User ${userId} guessed correctly. Song ID: ${daily_challenge_song_id}, Points: ${pointsAwarded}`);
-                res.json({
+                });
+            } else {
+                 console.log(`Guest guessed correctly. Song ID: ${daily_challenge_song_id}. No points saved.`);
+            }
+            responsePayload = {
                     correct: true,
                     songTitle: song.title,
                     artist: song.artist,
-                    pointsAwarded: pointsAwarded,
+                pointsAwarded: userIsAuthenticated ? pointsAwarded : 0, // Show 0 points for guests
                     message: `Correct! It was "${song.title}".`
-                });
-            });
-        } else {
-            // Incorrect guess
-            // Check if this was the last attempt for this song based on client-side levels (or server-side if you track attempts per song)
+            };
+        } else { // Incorrect guess
             const isLastAttemptForSong = parseInt(currentLevel) >= maxLevels;
             
-            // Store a score of 0 for an incorrect guess if it's the final attempt for the song,
-            // or if you want to record every attempt. For now, only record on correct or final incorrect.
-            if (isLastAttemptForSong) {
+            if (userIsAuthenticated && userId && isLastAttemptForSong) {
+                // Store a 0 score for authenticated users on final incorrect attempt
                 const storeScoreSql = 'INSERT INTO scores (user_id, daily_challenge_id, score, guessed_at_level) VALUES (?, ?, ?, ?)';
                 dbInstance.run(storeScoreSql, [userId, daily_challenge_song_id, 0, currentLevel], (scoreErr) => {
-                    if (scoreErr) console.error("Error storing 0 score for final incorrect guess:", scoreErr.message);
+                    if (scoreErr) console.error("Error storing 0 score for final incorrect guess (user):", userId, scoreErr.message);
                 });
-                 console.log(`User ${userId} guessed incorrectly on final attempt. Song ID: ${daily_challenge_song_id}`);
+            }
+            if (userIsAuthenticated && userId) {
+                console.log(`User ${userId} guessed incorrectly. Song ID: ${daily_challenge_song_id}, Level: ${currentLevel}`);
             } else {
-                 console.log(`User ${userId} guessed incorrectly. Song ID: ${daily_challenge_song_id}, Level: ${currentLevel}`);
+                console.log(`Guest guessed incorrectly. Song ID: ${daily_challenge_song_id}, Level: ${currentLevel}`);
             }
 
-            res.json({
+            responsePayload = {
                 correct: false,
-                message: "Incorrect. Try the next level!",
-                nextLevel: parseInt(currentLevel) + 1, // Suggest next level
-                gameOverForSong: isLastAttemptForSong, // True if it was the last defined level
+                message: "Incorrect. Try the next level!", // Generic message, frontend manages snippet progression
+                nextLevel: parseInt(currentLevel) + 1,
+                gameOverForSong: isLastAttemptForSong,
                 songTitle: isLastAttemptForSong ? song.title : undefined,
                 artist: isLastAttemptForSong ? song.artist : undefined
-            });
+            };
         }
+        res.json(responsePayload);
+    });
+});
+
+
+router.patch('/user/profile', isAuthenticated, async (req, res) => {
+    const userId = req.user.id; // Get user ID from the authenticated session
+    const { username, profile_image_url } = req.body;
+
+    console.log(`[API PATCH /user/profile] User ID: ${userId} attempting to update profile.`);
+    console.log(`[API PATCH /user/profile] Received - username: "${username}", profile_image_url: "${profile_image_url}"`);
+
+    if (username === undefined && profile_image_url === undefined) {
+        return res.status(400).json({ error: 'No update fields provided (username or profile_image_url required).' });
+    }
+
+    const dbInstance = getDb();
+    let updateFields = [];
+    let updateValues = [];
+
+    if (username !== undefined) {
+        const trimmedUsername = username.trim();
+        if (trimmedUsername === "" && req.user.username !== null) { // Allowing to clear username if it was previously set
+             updateFields.push('username = ?');
+             updateValues.push(null); // Set to null if empty string is provided
+             console.log(`[API PATCH /user/profile] Preparing to clear username for User ID: ${userId}`);
+        } else if (trimmedUsername) {
+            if (trimmedUsername.length < 3 || trimmedUsername.length > 20) {
+                return res.status(400).json({ error: 'Username must be between 3 and 20 characters.' });
+            }
+            // Regex for basic alphanumeric + underscore, no spaces. Adjust as needed.
+            if (!/^[a-zA-Z0-9_]+$/.test(trimmedUsername)) {
+                return res.status(400).json({ error: 'Username can only contain letters, numbers, and underscores.' });
+            }
+
+            try {
+                const existingUser = await new Promise((resolve, reject) => {
+                    dbInstance.get('SELECT id FROM users WHERE username = ? AND id != ?', [trimmedUsername, userId], (err, row) => {
+                        if (err) return reject(err);
+                        resolve(row);
+                    });
+                });
+                if (existingUser) {
+                    return res.status(409).json({ error: 'Username is already taken. Please choose another.' });
+                }
+            } catch (err) {
+                console.error("[API PATCH /user/profile] Error checking username uniqueness:", err.message);
+                return res.status(500).json({ error: 'Failed to validate username.' });
+            }
+            updateFields.push('username = ?');
+            updateValues.push(trimmedUsername);
+            console.log(`[API PATCH /user/profile] Preparing to update username to: "${trimmedUsername}" for User ID: ${userId}`);
+        }
+    }
+
+    if (profile_image_url !== undefined) {
+        const trimmedUrl = profile_image_url.trim();
+        if (trimmedUrl === "") { // Allowing to clear profile image URL
+            updateFields.push('profile_image_url = ?');
+            updateValues.push(null);
+            console.log(`[API PATCH /user/profile] Preparing to clear profile_image_url for User ID: ${userId}`);
+        } else {
+            try {
+                new URL(trimmedUrl); // Basic URL validation
+                updateFields.push('profile_image_url = ?');
+                updateValues.push(trimmedUrl);
+                console.log(`[API PATCH /user/profile] Preparing to update profile_image_url for User ID: ${userId}`);
+            } catch (e) {
+                return res.status(400).json({ error: 'Invalid profile image URL format.' });
+            }
+        }
+    }
+    
+    if (updateFields.length === 0) {
+        console.log('[API PATCH /user/profile] No valid fields to update after processing.');
+        // This might happen if user submits current values or empty strings for non-nullable fields that were already null
+        // It's better to return the current profile than an error if no actual change is requested.
+        // Or, if frontend ensures only changed values are sent, this path might indicate empty payload.
+        // For now, let's assume frontend might send unchanged values, so we fetch current and return.
+        dbInstance.get('SELECT id, username, display_name, email, profile_image_url FROM users WHERE id = ?', [userId], (getErr, currentUserData) => {
+            if (getErr || !currentUserData) {
+                return res.status(500).json({ error: 'Could not retrieve current profile.' });
+            }
+            const { google_id, ...userProfile } = currentUserData; // Exclude google_id
+            res.json({ message: 'No changes applied to profile.', user: userProfile });
+        });
+        return;
+    }
+
+    updateValues.push(userId); // For the WHERE clause
+
+    const sql = `UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`;
+    console.log(`[API PATCH /user/profile] Executing SQL: ${sql} with values: ${JSON.stringify(updateValues)}`);
+
+    dbInstance.run(sql, updateValues, function (err) {
+        if (err) {
+            console.error("[API PATCH /user/profile] Error updating user profile in DB:", err.message);
+            return res.status(500).json({ error: 'Failed to update profile.' });
+        }
+        
+        console.log(`[API PATCH /user/profile] DB run callback: this.changes = ${this.changes}`);
+
+        if (this.changes === 0 && updateFields.length > 0) {
+            // This means the WHERE clause (user ID) didn't match or values were identical to existing.
+            // Since user ID comes from req.user, it should match unless user was deleted.
+            console.warn('[API PATCH /user/profile] Update operation made 0 changes to the database. User might not exist or data was identical.');
+        }
+
+        // Fetch the updated user profile to return
+        dbInstance.get('SELECT id, username, display_name, email, profile_image_url FROM users WHERE id = ?', [userId], (getErr, updatedUserFromDB) => {
+            if (getErr) {
+                console.error("[API PATCH /user/profile] Error fetching updated profile after DB update:", getErr.message);
+                return res.status(500).json({ error: 'Profile update processed, but failed to fetch updated details.' });
+            }
+            if (!updatedUserFromDB) {
+                 console.error("[API PATCH /user/profile] User not found after update attempt.");
+                 return res.status(404).json({ error: 'User not found after update.' });
+            }
+            
+            console.log('[API PATCH /user/profile] User data fetched from DB after update attempt:', updatedUserFromDB);
+            const { google_id, id, ...userProfile } = updatedUserFromDB; // Exclude google_id and internal id from response
+            res.json({ message: 'Profile updated successfully!', user: userProfile });
+        });
     });
 });
 
