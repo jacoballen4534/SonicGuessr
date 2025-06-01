@@ -1,1 +1,40 @@
 /* You can add global styles to this file, and also import other style files */
+// In your global styles.scss
+
+// Ensure theme variables are available
+@use './app/typography/theme-variables.scss' as *; // Adjust path to your theme variables
+@use 'sass:color'; // For color.adjust
+@use 'sass:math'; // <<< Import the math module for math.div()
+
+body { // Or your main .app-wrapper
+  background-color: $primary-bg;
+  
+  // Define colors for the scales, aiming for subtlety
+  $scale-line-color: color.adjust($accent-secondary, $alpha: -0.85); // e.g., very transparent yellow for the scale "outline"
+  // Alternative using shades of the background for extreme subtlety:
+  // $scale-line-color: color.adjust($primary-bg, $lightness: -6%);
+
+  $scale-diameter: 50px; // The diameter of each conceptual circle forming a scale
+  $scale-line-thickness: 2px; // How thick the "edge" of the scale appears
+
+  background-image:
+    // Layer 1: A grid of circles (scales)
+    repeating-radial-gradient(
+      circle at 0 0, // Circles centered at the corners of each repeating unit
+      transparent,
+      transparent math.div($scale-diameter, 2) - $scale-line-thickness, // Inner transparent part up to the line
+      $scale-line-color math.div($scale-diameter, 2) - $scale-line-thickness, // Start of the colored ring
+      $scale-line-color math.div($scale-diameter, 2),                       // End of the colored ring (full radius)
+      transparent math.div($scale-diameter, 2)                               // Immediately transparent after the ring
+    ),
+    // Layer 2: An offset grid of circles to create the overlapping effect
+    repeating-radial-gradient(
+      circle at #{math.div($scale-diameter, 2)} #{math.div($scale-diameter, 2)}, // Circles centered in the middle of each Layer 1 unit
+      transparent,
+      transparent math.div($scale-diameter, 2) - $scale-line-thickness,
+      $scale-line-color math.div($scale-diameter, 2) - $scale-line-thickness,
+      $scale-line-color math.div($scale-diameter, 2),
+      transparent math.div($scale-diameter, 2)
+    );
+  background-size: $scale-diameter $scale-diameter; // Each repeating unit is the size of one scale diameter
+}
