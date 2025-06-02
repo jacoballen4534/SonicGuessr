@@ -680,7 +680,8 @@ module.exports = {
     getTracksForDailyChallenge,
     searchTracksOnSpotify,
     saveSuggestionsToCache,
-    fetchTrackIdeasByGenreFromMusicBrainz // Exporting the new helper
+    fetchTrackIdeasByGenreFromMusicBrainz, // Exporting the new helper
+    fetchFullTrackDetails
     // Remove fetchPopularTracksFromTheAudioDB if replaced, or keep if used as fallback.
 };
 console.log('[MUSIC_SOURCE_DEBUG] music-source-service.js module.exports defined.');

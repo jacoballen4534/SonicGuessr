@@ -20,6 +20,7 @@
     "axios": "^1.6.8",
     "connect-sqlite3": "^0.9.15",
     "cors": "^2.8.5",
+    "csv": "^6.3.11",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-session": "^1.18.0",

@@ -92,6 +92,31 @@ function initializeDatabase() {
             CREATE INDEX IF NOT EXISTS idx_suggestion_artist ON song_suggestion_cache (artist);
         `;
 
+        // --- NEW TABLE FOR CURATED SONGS (from Billboard charts etc.) ---
+        const createCuratedSongsTable = `
+            CREATE TABLE IF NOT EXISTS curated_songs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                artist TEXT NOT NULL,
+                year INTEGER,
+                raw_rank_billboard TEXT, -- Optional: To store the rank from the chart
+                source_details TEXT,     -- Optional: To store info like "Billboard Hot 100"
+                spotify_track_id TEXT UNIQUE, 
+                album_art_url TEXT,          
+                duration_ms INTEGER,         
+                youtube_video_id TEXT,       
+                last_used_for_challenge DATE, 
+                is_active BOOLEAN DEFAULT 1  
+            );
+        `;
+        const createCuratedSongsTitleArtistYearIndex = `
+            CREATE INDEX IF NOT EXISTS idx_curated_songs_title_artist_year ON curated_songs (title, artist, year);
+        `;
+        const createCuratedSongsSpotifyIdIndex = `
+            CREATE INDEX IF NOT EXISTS idx_curated_songs_spotify_id ON curated_songs (spotify_track_id);
+        `;
+        // --- END OF NEW TABLE FOR CURATED SONGS ---
+
 
         db.serialize(() => {
             const promises = [];
@@ -112,7 +137,7 @@ function initializeDatabase() {
                 console.log("Sessions table checked/created."); res();
             })));
 
-                        // Add creation for the new table and its index
+            // Add creation for the new table and its index
             promises.push(new Promise((res, rej) => db.run(createSongSuggestionCacheTable, err => {
                 if (err) { console.error("Error creating song_suggestion_cache table:", err.message); return rej(err); }
                 console.log("Song suggestion cache table checked/created."); res();
@@ -125,6 +150,21 @@ function initializeDatabase() {
                 if (err) { console.error("Error creating idx_suggestion_artist index:", err.message); return rej(err); }
                 console.log("idx_suggestion_artist index checked/created."); res();
             })));
+
+            // --- ADDING CURATED_SONGS TABLE AND ITS INDEXES ---
+            promises.push(new Promise((res, rej) => db.run(createCuratedSongsTable, err => {
+                if (err) { console.error("Error creating curated_songs table:", err.message); return rej(err); }
+                console.log("Curated songs table checked/created."); res();
+            })));
+            promises.push(new Promise((res, rej) => db.run(createCuratedSongsTitleArtistYearIndex, err => {
+                if (err) { console.error("Error creating idx_curated_songs_title_artist_year index:", err.message); return rej(err); }
+                console.log("idx_curated_songs_title_artist_year index checked/created."); res();
+            })));
+             promises.push(new Promise((res, rej) => db.run(createCuratedSongsSpotifyIdIndex, err => {
+                if (err) { console.error("Error creating idx_curated_songs_spotify_id index:", err.message); return rej(err); }
+                console.log("idx_curated_songs_spotify_id index checked/created."); res();
+            })));
+            // --- END OF ADDING CURATED_SONGS ---
 
             Promise.all(promises).then(resolve).catch(reject);
         });
