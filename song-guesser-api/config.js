@@ -15,6 +15,9 @@ module.exports = {
     SPOTIFY_PLAYLIST_IDS: process.env.SPOTIFY_PLAYLIST_IDS ? process.env.SPOTIFY_PLAYLIST_IDS.split(',').map(id => id.trim()) : [],
 
     YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY, // <<< ADD THIS LINE
+    YOUTUBE_API_KEYS: process.env.YOUTUBE_API_KEYS 
+                        ? process.env.YOUTUBE_API_KEYS.split(',').map(key => key.trim()).filter(key => key) 
+                        : [], // Parse into array, trim whitespace, filter out empty strings
 
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,

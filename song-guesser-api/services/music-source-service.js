@@ -15,7 +15,7 @@ const {
     SPOTIFY_ACCOUNTS_URL,
     SPOTIFY_API_BASE_URL,
     SPOTIFY_MARKET,
-    YOUTUBE_API_KEY,
+    YOUTUBE_API_KEYS,
     DAILY_SONG_COUNT,
     THEAUDIODB_API_KEY,
     THEAUDIODB_API_BASE_URL,
@@ -34,6 +34,76 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 let spotifyAccessToken = null;
 let tokenExpiryTime = 0;
+
+let availableYouTubeApiKeys = Array.isArray(YOUTUBE_API_KEYS) ? [...YOUTUBE_API_KEYS] : [];
+let currentYouTubeApiKeyIndex = 0;
+
+function getCurrentYouTubeApiKey() {
+    if (availableYouTubeApiKeys.length === 0) {
+        console.error('[YouTube Keys] No API keys configured.');
+        return null;
+    }
+    if (currentYouTubeApiKeyIndex >= availableYouTubeApiKeys.length) {
+        console.warn('[YouTube Keys] All available API keys have been tried and may have hit quota.');
+        return null; // All keys exhausted for this session/run
+    }
+    return availableYouTubeApiKeys[currentYouTubeApiKeyIndex];
+}
+
+function switchToNextYouTubeApiKey() {
+    currentYouTubeApiKeyIndex++;
+    if (currentYouTubeApiKeyIndex < availableYouTubeApiKeys.length) {
+        console.warn(`[YouTube Keys] Quota likely hit. Switching to API Key #${currentYouTubeApiKeyIndex + 1}`);
+        return true;
+    }
+    console.error('[YouTube Keys] All YouTube API keys exhausted.');
+    return false;
+}
+
+// Custom error for when all keys are exhausted
+class AllApiKeysExhaustedError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = "AllApiKeysExhaustedError";
+    }
+}
+
+async function makeYouTubeApiCall(axiosInstance, url, params) {
+    // eslint-disable-next-line no-constant-condition
+    while (true) { // Loop indefinitely until success or all keys exhausted
+        const currentKey = getCurrentYouTubeApiKey();
+        if (!currentKey) {
+            console.error('[YouTube API Call Helper] No API key available.');
+            throw new AllApiKeysExhaustedError('All YouTube API keys have been tried or are not configured.');
+        }
+
+        const fullParams = { ...params, key: currentKey };
+        // console.log(`[YouTube API Call Helper] Attempting call to ${url} with key ending ${currentKey.slice(-4)}`);
+
+        try {
+            const response = await axiosInstance.get(url, { params: fullParams });
+            return response; // Success
+        } catch (error) {
+            if (error.response && error.response.status === 403) {
+                const errorDetails = error.response.data && error.response.data.error;
+                const reason = errorDetails && errorDetails.errors && errorDetails.errors.length > 0 ? errorDetails.errors[0].reason : 'unknown';
+                console.warn(`[YouTube API Call Helper] Call to ${url} failed with 403 (Reason: ${reason}) using key ending ${currentKey.slice(-4)}.`);
+                
+                if (!switchToNextYouTubeApiKey()) { // Try to switch to the next key
+                    console.error('[YouTube API Call Helper] All API keys exhausted after a 403 error.');
+                    throw new AllApiKeysExhaustedError('All YouTube API keys have been exhausted due to rate limits or other 403 errors.');
+                }
+                // If switchToNextYouTubeApiKey was successful, the loop will continue and try with the new key.
+                console.log('[YouTube API Call Helper] Switched to a new key. Retrying...');
+            } else {
+                // Not a 403 error, or not an axios error with a response, so re-throw
+                const errorMsg = error.response ? JSON.stringify(error.response.data.error || error.response.data) : error.message;
+                console.error(`[YouTube API Call Helper] Call to ${url} failed with non-403 error: ${errorMsg}`);
+                throw error; // Re-throw other errors
+            }
+        }
+    }
+}
 
 async function getAccessToken() {
     if (spotifyAccessToken && Date.now() < tokenExpiryTime) {
@@ -104,37 +174,28 @@ function parseISO8601Duration(isoDuration) {
 }
 
 async function searchYouTubeVideo(title, artist, spotifyDurationMs) {
-    if (!YOUTUBE_API_KEY) {
-        console.error('[Youtube] YouTube API Key is not configured. Aborting.');
-        throw new Error('YouTube API Key missing.'); // Or return null
-    }
-
     console.log(`[Youtube] Starting search for: "${artist} - ${title}" (Spotify Duration: ${spotifyDurationMs}ms)`);
 
     const youtubeApiSearchUrl = 'https://www.googleapis.com/youtube/v3/search';
     const youtubeApiVideosUrl = 'https://www.googleapis.com/youtube/v3/videos';
-    let selectedVideoId = null;
 
     const undesiredKeywords = [
-        "live", "cover", "remix", "interview", "teaser", 
+        "live", "cover", "remix", "interview", "teaser",
         "reaction", "parody", "tutorial", "instrumental", "karaoke",
-        "official video", "music video" // Keep "official music video" out mostly
+        // "official video", "music video" // Kept as per original commented out line
     ];
 
     // --- Attempt 1: Ultra-Specific "Official Audio" Search ---
     const officialAudioQuery = `${artist} - ${title} Official Audio`;
     console.log(`[Youtube] Attempt 1: Querying for "${officialAudioQuery}"`);
     try {
-        const searchResponse = await axios.get(youtubeApiSearchUrl, {
-            params: {
-                part: 'snippet',
-                q: officialAudioQuery,
-                type: 'video',
-                videoCategoryId: '10', // Music
-                videoEmbeddable: 'true',
-                maxResults: 3,       // Fetch few results for this specific query
-                key: YOUTUBE_API_KEY
-            }
+        const searchResponse = await makeYouTubeApiCall(axios, youtubeApiSearchUrl, {
+            part: 'snippet',
+            q: officialAudioQuery,
+            type: 'video',
+            videoCategoryId: '10', // Music
+            videoEmbeddable: 'true',
+            maxResults: 3,
         });
 
         if (searchResponse.data.items && searchResponse.data.items.length > 0) {
@@ -148,50 +209,45 @@ async function searchYouTubeVideo(title, artist, spotifyDurationMs) {
                 }
 
                 if (videoTitleLower.includes("official audio") && isLikelyOfficialChannel(channelTitle, artist)) {
-                    // High confidence match
                     const videoId = item.id.videoId;
-                    // Optional: Quick duration check if spotifyDurationMs is available
-                    if (spotifyDurationMs) {
-                        // (Duration check logic - can be a helper function)
-                        // For brevity, assume if it's official audio from official channel, duration is likely okay or less critical
-                    }
+                    // Optional: Duration check (can be added if needed, but high confidence here)
                     console.log(`  [Attempt 1 SUCCESS] High-confidence "Official Audio" found: "${item.snippet.title}" (ID: ${videoId})`);
-                    return videoId; // Return immediately
+                    return videoId;
                 }
             }
         }
     } catch (error) {
+        if (error instanceof AllApiKeysExhaustedError) {
+            console.error('[Youtube] Attempt 1 (Official Audio Search) failed: All API keys exhausted.');
+            throw error; // Propagate this critical error upwards
+        }
         const errorMsg = error.response ? JSON.stringify(error.response.data.error || error.response.data) : error.message;
-        console.warn(`[Youtube] Attempt 1 (Official Audio) failed or no direct match: ${errorMsg}`);
-        if (error.response && error.response.status === 403) { throw error; } // Quota error, stop
+        console.warn(`[Youtube] Attempt 1 (Official Audio Search) request failed or no direct match: ${errorMsg}. Proceeding to Attempt 2.`);
+        // Non-critical error, proceed to Attempt 2
     }
 
-    // --- Attempt 2: Broader General Search (if Attempt 1 failed) ---
+    // --- Attempt 2: Broader General Search ---
     const generalQuery = `${artist} - ${title}`;
     console.log(`[Youtube] Attempt 2: Broader query for "${generalQuery}", fetching more results...`);
     try {
-        const searchResponse = await axios.get(youtubeApiSearchUrl, {
-            params: {
-                part: 'snippet',
-                q: generalQuery,
-                type: 'video',
-                videoCategoryId: '10',
-                videoEmbeddable: 'true',
-                maxResults: 10, // Fetch more results to filter client-side
-                key: YOUTUBE_API_KEY
-            }
+        const searchResponse = await makeYouTubeApiCall(axios, youtubeApiSearchUrl, {
+            part: 'snippet',
+            q: generalQuery,
+            type: 'video',
+            videoCategoryId: '10',
+            videoEmbeddable: 'true',
+            maxResults: 10,
         });
 
         if (searchResponse.data.items && searchResponse.data.items.length > 0) {
-            // Define preference order for filtering results from the general search
             const preferenceOrder = [
                 { type: 'official-audio-title', check: (vt, ct) => vt.includes("official audio") && isLikelyOfficialChannel(ct, artist) },
                 { type: 'topic-channel', check: (vt, ct) => ct.toLowerCase().endsWith(" - topic") && isLikelyOfficialChannel(ct, artist) },
                 { type: 'official-lyric-video', check: (vt, ct) => vt.includes("official lyric video") && isLikelyOfficialChannel(ct, artist) },
                 { type: 'lyric-video-exact', check: (vt, ct) => vt.includes("lyric video") },
-                { type: 'lyrics-general', check: (vt, ct) => vt.includes("lyric") }, // Catches "lyrics", "(lyrics)"
+                { type: 'lyrics-general', check: (vt, ct) => vt.includes("lyric") },
                 { type: 'audio-title', check: (vt, ct) => vt.includes("audio") && !vt.includes("live") && !vt.includes("cover") },
-                { type: 'general-match', check: (vt, ct) => true } // Fallback if it passes other filters
+                { type: 'general-match', check: (vt, ct) => true }
             ];
 
             for (const preference of preferenceOrder) {
@@ -202,33 +258,42 @@ async function searchYouTubeVideo(title, artist, spotifyDurationMs) {
                     const channelTitle = item.snippet.channelTitle;
 
                     if (undesiredKeywords.some(k => videoTitleLower.includes(k) && !videoTitleLower.includes("lyric video"))) {
-                        // console.log(`  [Attempt 2 SKIP] Undesired keyword in "${videoTitle}"`);
                         continue;
                     }
 
                     if (preference.check(videoTitleLower, channelTitle)) {
                         console.log(`  [Attempt 2 Candidate] Type "${preference.type}" for "${videoTitle}" on channel "${channelTitle}"`);
-                        // Duration Check
                         if (spotifyDurationMs) {
                             try {
-                                const videoDetailsResponse = await axios.get(youtubeApiVideosUrl, {
-                                    params: { part: 'contentDetails', id: videoId, key: YOUTUBE_API_KEY }
+                                const videoDetailsResponse = await makeYouTubeApiCall(axios, youtubeApiVideosUrl, {
+                                    part: 'contentDetails',
+                                    id: videoId,
                                 });
                                 if (videoDetailsResponse.data.items && videoDetailsResponse.data.items.length > 0) {
                                     const durationISO = videoDetailsResponse.data.items[0].contentDetails.duration;
-                                    const youtubeDurationMs = parseISO8601Duration(durationISO);
+                                    const youtubeDurationMs = parseISO8601Duration(durationISO); // Ensure parseISO8601Duration is correctly defined
                                     const twentyPercent = spotifyDurationMs * 0.20;
-                                    const maxDiff = Math.max(15000, Math.min(45000, twentyPercent)); // Allow 15s to 45s diff, or 20%
+                                    const maxDiff = Math.max(15000, Math.min(45000, twentyPercent));
 
                                     if (Math.abs(youtubeDurationMs - spotifyDurationMs) > maxDiff) {
                                         console.log(`    [SKIP] Duration mismatch for "${videoTitle}" (YT: ${youtubeDurationMs}ms, Spotify: ${spotifyDurationMs}ms, MaxDiff: ${maxDiff}ms)`);
-                                        continue; 
+                                        continue;
                                     }
                                     console.log(`    [PASS] Duration check for "${videoTitle}" (YT: ${youtubeDurationMs}ms, Spotify: ${spotifyDurationMs}ms)`);
-                                } else { /* warn no duration */ }
-                            } catch (detailsError) { /* warn error fetching duration */ }
+                                } else {
+                                     console.warn(`    [WARN] No content details found for video ID ${videoId} during duration check.`);
+                                }
+                            } catch (detailsError) {
+                                if (detailsError instanceof AllApiKeysExhaustedError) {
+                                    console.error('[Youtube] Attempt 2 (Video Details) failed: All API keys exhausted.');
+                                    throw detailsError; // Propagate
+                                }
+                                const detailsErrorMsg = detailsError.response ? JSON.stringify(detailsError.response.data.error || detailsError.response.data) : detailsError.message;
+                                console.warn(`    [SKIP] Error fetching video details for "${videoTitle}" (ID: ${videoId}): ${detailsErrorMsg}. Skipping duration check.`);
+                                // Optional: Decide if you want to proceed without duration check or skip this video item.
+                                // Current logic proceeds without a successful duration check if details fetch fails for non-key reasons.
+                            }
                         }
-                        // If it reaches here, it's the best match for the current preference level and passed duration.
                         console.log(`[Youtube] Attempt 2 SUCCESS (Type: ${preference.type}): "${videoTitle}" (ID: ${videoId})`);
                         return videoId;
                     }
@@ -236,14 +301,20 @@ async function searchYouTubeVideo(title, artist, spotifyDurationMs) {
             }
         }
     } catch (error) {
+        if (error instanceof AllApiKeysExhaustedError) {
+            console.error('[Youtube] Attempt 2 (General Search) failed: All API keys exhausted.');
+            throw error; // Propagate
+        }
         const errorMsg = error.response ? JSON.stringify(error.response.data.error || error.response.data) : error.message;
-        console.error(`[Youtube] Attempt 2 (General) failed: ${errorMsg}`);
-        if (error.response && error.response.status === 403) { throw error; } // Quota error, stop
+        // Log as error or warning based on desired strictness. If search itself fails, it's significant.
+        console.error(`[Youtube] Attempt 2 (General Search) request failed: ${errorMsg}.`);
+        // Allow function to return null if no video found after this.
     }
 
     console.warn(`[Youtube] No suitable YouTube video found for "${artist} - ${title}" after all attempts.`);
     return null;
 }
+
 
 async function fetchTracksFromSpecificPlaylist(playlistId, trackLimit = 50, token) {
     if (!token) token = await getAccessToken(); // Get token if not provided
@@ -759,7 +830,8 @@ module.exports = {
     saveSuggestionsToCache,
     fetchTrackIdeasByGenreFromMusicBrainz, // Exporting the new helper
     fetchFullTrackDetails,
-    searchYouTubeVideo
+    searchYouTubeVideo,
+    getCurrentYouTubeApiKey,
     // Remove fetchPopularTracksFromTheAudioDB if replaced, or keep if used as fallback.
 };
 console.log('[MUSIC_SOURCE_DEBUG] music-source-service.js module.exports defined.');

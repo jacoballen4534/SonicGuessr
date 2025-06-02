@@ -3,7 +3,7 @@
 const path = require('path');
 const { getDb, dbInitializationPromise } = require('../services/database-service');
 const musicSourceService = require('../services/music-source-service'); // Requires searchYouTubeVideo
-const { YOUTUBE_API_KEY } = require('../config'); // For checking if API key is set
+const { YOUTUBE_API_KEYS } = require('../config'); // For checking if API key is set
 
 // YouTube Data API has quotas. Be mindful. 
 // A common quota is 10,000 units/day. A search is ~100 units.
@@ -41,8 +41,9 @@ async function enrichSongsWithYouTube() {
     const db = getDb();
     console.log('Database initialized. Starting YouTube enrichment process...');
 
-    if (!YOUTUBE_API_KEY) {
-        console.error('YOUTUBE_API_KEY is not configured. Aborting YouTube enrichment.');
+    const initialKey = musicSourceService.getCurrentYouTubeApiKey ? musicSourceService.getCurrentYouTubeApiKey() : null; // If getCurrentYouTubeApiKey is exported
+    if (!initialKey && (!YOUTUBE_API_KEYS || YOUTUBE_API_KEYS.length === 0)) { // Check config directly too
+        console.error('YOUTUBE_API_KEYS are not configured. Aborting YouTube enrichment.');
         return;
     }
 
@@ -55,7 +56,7 @@ async function enrichSongsWithYouTube() {
               AND spotify_track_id NOT LIKE 'ERROR_%' 
               AND youtube_video_id IS NULL
               AND (is_active = 1 OR is_active IS NULL)
-            LIMIT 80; -- Process in batches to manage API quotas
+            LIMIT 50; -- Process in batches to manage API quotas
         `;
         db.all(sql, [], (err, rows) => {
             if (err) return reject(err);
@@ -99,26 +100,18 @@ async function enrichSongsWithYouTube() {
             
             let isQuotaError = false;
             // Axios errors (from direct calls in this script if any, or if searchYouTubeVideo re-throws raw Axios error)
-            if (error.isAxiosError && error.response && error.response.status === 403) {
-                isQuotaError = true;
-            } 
-            // Check for specific error message if searchYouTubeVideo throws a custom error object or string for 403
-            else if (error.message && error.message.toLowerCase().includes('quota') || (error.message && error.message.includes('403'))) {
-                isQuotaError = true;
-            }
-
-            if (isQuotaError) {
-                console.error('>>> YouTube API quota likely reached (403 Forbidden) or other API access error. Stopping enrichment for this run. <<<');
+            if (error.name === "AllApiKeysExhaustedError" || 
+                (error.isAxiosError && error.response && error.response.status === 403) ||
+                (error.message && error.message.toLowerCase().includes('quota')) ) {
+                console.error('>>> YouTube API quota likely reached for ALL available keys or a persistent API access issue. Stopping enrichment for this run. <<<');
                 console.error(`    The current song ("${song.title}") and subsequent songs in this batch were not processed and will be retried later.`);
-                break; // Exit the loop to stop processing more songs
+                break; // Exit the main song processing loop
+            
             } else {
                 // For other types of errors not related to quota, mark the song as problematic in the DB
                 console.log(`    Marking song "${song.title}" as 'ERROR_DURING_YOUTUBE_ENRICH' in DB due to non-quota error.`);
                 try {
                     await markSongYouTubeStatus(db, song.id, 'ERROR_DURING_YOUTUBE_ENRICH');
-                    // songsMarkedNotFound++; // This counter is for "search completed but found nothing"
-                                          // We can use songsSkippedDueToErrorThisRun to reflect errors that didn't result in a DB mark change
-                                          // Or add a new counter for "songsMarkedErrorInDB"
                 } catch (markError) {
                     console.error(`  Additionally, failed to mark song ID ${song.id} as errored: ${markError.message}`);
                 }
