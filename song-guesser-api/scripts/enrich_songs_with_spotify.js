@@ -4,7 +4,7 @@ const path = require('path');
 const { getDb, dbInitializationPromise } = require('../services/database-service');
 const musicSourceService = require('../services/music-source-service');
 
-const DELAY_BETWEEN_SPOTIFY_CALLS_MS = 5000; // Respect rate limits
+const DELAY_BETWEEN_SPOTIFY_CALLS_MS = 3000; // Respect rate limits
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // Helper function to normalize text for comparison

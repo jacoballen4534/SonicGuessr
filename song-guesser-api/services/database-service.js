@@ -106,7 +106,8 @@ function initializeDatabase() {
                 duration_ms INTEGER,         
                 youtube_video_id TEXT,       
                 last_used_for_challenge DATE, 
-                is_active BOOLEAN DEFAULT 1  
+                is_active BOOLEAN DEFAULT 1,
+                genres TEXT  
             );
         `;
         const createCuratedSongsTitleArtistYearIndex = `
@@ -115,6 +116,12 @@ function initializeDatabase() {
         const createCuratedSongsSpotifyIdIndex = `
             CREATE INDEX IF NOT EXISTS idx_curated_songs_spotify_id ON curated_songs (spotify_track_id);
         `;
+
+        // SQL to add the column if the table already exists (run this once or ensure it's safe to run multiple times)
+        const alterCuratedSongsAddGenres = `
+            ALTER TABLE curated_songs ADD COLUMN genres TEXT;
+        `;
+
         // --- END OF NEW TABLE FOR CURATED SONGS ---
 
 
@@ -164,6 +171,19 @@ function initializeDatabase() {
                 if (err) { console.error("Error creating idx_curated_songs_spotify_id index:", err.message); return rej(err); }
                 console.log("idx_curated_songs_spotify_id index checked/created."); res();
             })));
+
+            // Attempt to add the genres column - this will fail if the column already exists, which is fine for this purpose.
+            // A more robust way would check if the column exists first.
+            promises.push(new Promise((res, rej) => db.run(alterCuratedSongsAddGenres, err => {
+                if (err && !err.message.includes('duplicate column name')) { // Ignore error if column already exists
+                    console.error("Error adding genres column to curated_songs:", err.message); 
+                    // We don't want to reject the whole DB init for this if table is already new.
+                } else if (!err) {
+                    console.log("Column 'genres' added to 'curated_songs' or already exists.");
+                }
+                res(); // Resolve even if it fails due to column existing
+            })));
+
             // --- END OF ADDING CURATED_SONGS ---
 
             Promise.all(promises).then(resolve).catch(reject);
