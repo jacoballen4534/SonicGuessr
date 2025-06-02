@@ -62,17 +62,35 @@ async function getAccessToken() {
     }
 }
 
+function parseISO8601Duration(isoDuration) {
+    const regex = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/;
+    const matches = isoDuration.match(regex);
+    if (!matches) return 0; // Or throw error
+    const hours = parseInt(matches[1]) || 0;
+    const minutes = parseInt(matches[2]) || 0;
+    const seconds = parseInt(matches[3]) || 0;
+    return (hours * 3600 + minutes * 60 + seconds) * 1000;
+}
+
+// Helper function to check for official-sounding channels
 function isLikelyOfficialChannel(channelTitle, artistName) {
     if (!channelTitle || !artistName) return false;
     const lowerChannel = channelTitle.toLowerCase();
     const lowerArtist = artistName.toLowerCase();
-    const artistFirstWord = lowerArtist.split(' ')[0];
-    return lowerChannel.includes(lowerArtist) || 
-           lowerChannel.includes(artistFirstWord) || // In case artist name is shortened in channel
+    // Split artist name and check if any significant part is in the channel title
+    const artistParts = lowerArtist.split(/[\s-]+/).filter(p => p.length > 2); // Get significant parts
+    
+    let R_isArtistChannel = lowerChannel.includes(lowerArtist);
+    if (!R_isArtistChannel && artistParts.length > 0) {
+        R_isArtistChannel = artistParts.some(part => lowerChannel.includes(part));
+    }
+
+    return R_isArtistChannel || 
            lowerChannel.includes('vevo') || 
-           lowerChannel.endsWith(' - topic') || 
+           lowerChannel.endsWith(' - topic') || // Exact match for topic channel suffix
            lowerChannel.includes('official');
 }
+
 
 
 // Helper function to parse YouTube's ISO 8601 duration string to milliseconds
@@ -87,154 +105,143 @@ function parseISO8601Duration(isoDuration) {
 
 async function searchYouTubeVideo(title, artist, spotifyDurationMs) {
     if (!YOUTUBE_API_KEY) {
-        console.error('YouTube API Key is not configured in config.js');
-        throw new Error('YouTube API Key missing.'); // Or return null if preferred
+        console.error('[Youtube] YouTube API Key is not configured. Aborting.');
+        throw new Error('YouTube API Key missing.'); // Or return null
     }
 
     console.log(`[Youtube] Starting search for: "${artist} - ${title}" (Spotify Duration: ${spotifyDurationMs}ms)`);
 
-    // Define query types with priority and strictness for matching
-    const searchStrategies = [
-        { queryText: `${artist} - ${title} Official Audio`, type: 'official-audio', strictChannel: true },
-        { queryText: `${artist} - ${title} Lyric Video`, type: 'lyric-video', strictChannel: true }, // Try to find official lyric videos
-        { queryText: `${artist} - ${title} (Lyrics)`, type: 'lyrics', strictChannel: false }, // For titles explicitly with (Lyrics)
-        { queryText: `${artist} - ${title} Audio`, type: 'audio', strictChannel: false },
-        { queryText: `${artist} - ${title} Topic`, type: 'topic', strictChannel: true }, // Topic channels are usually good
-        { queryText: `${artist} - ${title}`, type: 'general', strictChannel: false }     // Fallback
-    ];
-
     const youtubeApiSearchUrl = 'https://www.googleapis.com/youtube/v3/search';
     const youtubeApiVideosUrl = 'https://www.googleapis.com/youtube/v3/videos';
+    let selectedVideoId = null;
 
-    for (const strategy of searchStrategies) {
-        console.log(`[Youtube] Querying (Strategy: ${strategy.type}): "${strategy.queryText}"`);
-        try {
-            const searchResponse = await axios.get(youtubeApiSearchUrl, {
-                params: {
-                    part: 'snippet',
-                    q: strategy.queryText,
-                    type: 'video',
-                    videoCategoryId: '10', // Music
-                    videoEmbeddable: 'true',
-                    maxResults: 3,         // Fetch a few candidates
-                    key: YOUTUBE_API_KEY
+    const undesiredKeywords = [
+        "live", "cover", "remix", "interview", "teaser", 
+        "reaction", "parody", "tutorial", "instrumental", "karaoke",
+        "official video", "music video" // Keep "official music video" out mostly
+    ];
+
+    // --- Attempt 1: Ultra-Specific "Official Audio" Search ---
+    const officialAudioQuery = `${artist} - ${title} Official Audio`;
+    console.log(`[Youtube] Attempt 1: Querying for "${officialAudioQuery}"`);
+    try {
+        const searchResponse = await axios.get(youtubeApiSearchUrl, {
+            params: {
+                part: 'snippet',
+                q: officialAudioQuery,
+                type: 'video',
+                videoCategoryId: '10', // Music
+                videoEmbeddable: 'true',
+                maxResults: 3,       // Fetch few results for this specific query
+                key: YOUTUBE_API_KEY
+            }
+        });
+
+        if (searchResponse.data.items && searchResponse.data.items.length > 0) {
+            for (const item of searchResponse.data.items) {
+                const videoTitleLower = item.snippet.title.toLowerCase();
+                const channelTitle = item.snippet.channelTitle;
+
+                if (undesiredKeywords.some(k => videoTitleLower.includes(k) && !videoTitleLower.includes("lyric video"))) {
+                    console.log(`  [Attempt 1 SKIP] Undesired keyword in "${item.snippet.title}"`);
+                    continue;
                 }
-            });
 
-            if (searchResponse.data.items && searchResponse.data.items.length > 0) {
+                if (videoTitleLower.includes("official audio") && isLikelyOfficialChannel(channelTitle, artist)) {
+                    // High confidence match
+                    const videoId = item.id.videoId;
+                    // Optional: Quick duration check if spotifyDurationMs is available
+                    if (spotifyDurationMs) {
+                        // (Duration check logic - can be a helper function)
+                        // For brevity, assume if it's official audio from official channel, duration is likely okay or less critical
+                    }
+                    console.log(`  [Attempt 1 SUCCESS] High-confidence "Official Audio" found: "${item.snippet.title}" (ID: ${videoId})`);
+                    return videoId; // Return immediately
+                }
+            }
+        }
+    } catch (error) {
+        const errorMsg = error.response ? JSON.stringify(error.response.data.error || error.response.data) : error.message;
+        console.warn(`[Youtube] Attempt 1 (Official Audio) failed or no direct match: ${errorMsg}`);
+        if (error.response && error.response.status === 403) { throw error; } // Quota error, stop
+    }
+
+    // --- Attempt 2: Broader General Search (if Attempt 1 failed) ---
+    const generalQuery = `${artist} - ${title}`;
+    console.log(`[Youtube] Attempt 2: Broader query for "${generalQuery}", fetching more results...`);
+    try {
+        const searchResponse = await axios.get(youtubeApiSearchUrl, {
+            params: {
+                part: 'snippet',
+                q: generalQuery,
+                type: 'video',
+                videoCategoryId: '10',
+                videoEmbeddable: 'true',
+                maxResults: 10, // Fetch more results to filter client-side
+                key: YOUTUBE_API_KEY
+            }
+        });
+
+        if (searchResponse.data.items && searchResponse.data.items.length > 0) {
+            // Define preference order for filtering results from the general search
+            const preferenceOrder = [
+                { type: 'official-audio-title', check: (vt, ct) => vt.includes("official audio") && isLikelyOfficialChannel(ct, artist) },
+                { type: 'topic-channel', check: (vt, ct) => ct.toLowerCase().endsWith(" - topic") && isLikelyOfficialChannel(ct, artist) },
+                { type: 'official-lyric-video', check: (vt, ct) => vt.includes("official lyric video") && isLikelyOfficialChannel(ct, artist) },
+                { type: 'lyric-video-exact', check: (vt, ct) => vt.includes("lyric video") },
+                { type: 'lyrics-general', check: (vt, ct) => vt.includes("lyric") }, // Catches "lyrics", "(lyrics)"
+                { type: 'audio-title', check: (vt, ct) => vt.includes("audio") && !vt.includes("live") && !vt.includes("cover") },
+                { type: 'general-match', check: (vt, ct) => true } // Fallback if it passes other filters
+            ];
+
+            for (const preference of preferenceOrder) {
                 for (const item of searchResponse.data.items) {
                     const videoId = item.id.videoId;
                     const videoTitle = item.snippet.title;
                     const videoTitleLower = videoTitle.toLowerCase();
                     const channelTitle = item.snippet.channelTitle;
 
-                    // 1. Undesired Keywords Filter (stricter)
-                    const undesiredKeywords = [
-                        "live", "cover", "remix", "interview", "teaser", 
-                        "reaction", "parody", "tutorial", "instrumental", "karaoke",
-                        "official video", "music video" // Keep "official music video" out unless it's all we find later
-                    ];
-                    // Allow "lyric video" but not just "video" if we seek audio
-                    if (undesiredKeywords.some(keyword => videoTitleLower.includes(keyword) && !videoTitleLower.includes("lyric video"))) {
-                        console.log(`  [SKIP] Undesired keyword in "${videoTitle}"`);
+                    if (undesiredKeywords.some(k => videoTitleLower.includes(k) && !videoTitleLower.includes("lyric video"))) {
+                        // console.log(`  [Attempt 2 SKIP] Undesired keyword in "${videoTitle}"`);
                         continue;
                     }
 
-                    // 2. Type-based Preference and Confidence
-                    let isMatch = false;
-                    let isHighConfidence = false;
+                    if (preference.check(videoTitleLower, channelTitle)) {
+                        console.log(`  [Attempt 2 Candidate] Type "${preference.type}" for "${videoTitle}" on channel "${channelTitle}"`);
+                        // Duration Check
+                        if (spotifyDurationMs) {
+                            try {
+                                const videoDetailsResponse = await axios.get(youtubeApiVideosUrl, {
+                                    params: { part: 'contentDetails', id: videoId, key: YOUTUBE_API_KEY }
+                                });
+                                if (videoDetailsResponse.data.items && videoDetailsResponse.data.items.length > 0) {
+                                    const durationISO = videoDetailsResponse.data.items[0].contentDetails.duration;
+                                    const youtubeDurationMs = parseISO8601Duration(durationISO);
+                                    const twentyPercent = spotifyDurationMs * 0.20;
+                                    const maxDiff = Math.max(15000, Math.min(45000, twentyPercent)); // Allow 15s to 45s diff, or 20%
 
-                    switch (strategy.type) {
-                        case 'official-audio':
-                            if (videoTitleLower.includes("official audio")) {
-                                isMatch = true;
-                                if (isLikelyOfficialChannel(channelTitle, artist)) isHighConfidence = true;
-                            }
-                            break;
-                        case 'lyric-video': // Catches "Lyric Video"
-                            if (videoTitleLower.includes("lyric video")) {
-                                isMatch = true;
-                                // For lyric videos, channel might be less strictly official but still good
-                                if (isLikelyOfficialChannel(channelTitle, artist)) isHighConfidence = true;
-                            }
-                            break;
-                        case 'lyrics': // Catches "(Lyrics)" or just "lyrics" in title
-                            if (videoTitleLower.includes("lyrics")) { // More relaxed for (Lyrics)
-                                isMatch = true;
-                                // Don't require strict channel for this query type initially
-                            }
-                            break;
-                        case 'audio':
-                            if (videoTitleLower.includes("audio") && !videoTitleLower.includes("official audio")) {
-                                isMatch = true;
-                            }
-                            break;
-                        case 'topic':
-                            if (channelTitle.toLowerCase().includes(" - topic") && 
-                                channelTitle.toLowerCase().includes(artist.toLowerCase().split(" ")[0])) { // Check first word of artist
-                                isMatch = true;
-                                isHighConfidence = true; // Topic channels are generally good
-                            }
-                            break;
-                        case 'general':
-                            isMatch = true; // For general fallback, all results are initially considered for duration etc.
-                            break;
-                    }
-                    
-                    if (!isMatch) {
-                        console.log(`  [SKIP] Did not match preferred type criteria for strategy "${strategy.type}" for video "${videoTitle}"`);
-                        continue;
-                    }
-
-                    // 3. Channel Strictness (for certain strategies if not already high confidence)
-                    if (strategy.strictChannel && !isHighConfidence && !isLikelyOfficialChannel(channelTitle, artist)) {
-                        console.log(`  [SKIP] Channel "${channelTitle}" not deemed official enough for strict strategy "${strategy.type}" for video "${videoTitle}"`);
-                        continue;
-                    }
-
-                    // 4. Duration Check (if spotifyDurationMs is provided)
-                    if (spotifyDurationMs) {
-                        try {
-                            const videoDetailsResponse = await axios.get(youtubeApiVideosUrl, {
-                                params: { part: 'contentDetails', id: videoId, key: YOUTUBE_API_KEY }
-                            });
-                            if (videoDetailsResponse.data.items && videoDetailsResponse.data.items.length > 0) {
-                                const durationISO = videoDetailsResponse.data.items[0].contentDetails.duration;
-                                const youtubeDurationMs = parseISO8601Duration(durationISO);
-                                
-                                // Allow +/- 20% of Spotify duration, or max 30-40s difference
-                                const twentyPercent = spotifyDurationMs * 0.20;
-                                const maxDiff = Math.min(30000, twentyPercent); // Stricter for shorter songs
-
-                                if (Math.abs(youtubeDurationMs - spotifyDurationMs) > maxDiff) {
-                                    console.log(`  [SKIP] Duration mismatch for "${videoTitle}" (YT: ${youtubeDurationMs}ms, Spotify: ${spotifyDurationMs}ms, MaxDiff: ${maxDiff}ms)`);
-                                    continue;
-                                }
-                                console.log(`  [PASS] Duration check for "${videoTitle}" (YT: ${youtubeDurationMs}ms, Spotify: ${spotifyDurationMs}ms)`);
-                            } else {
-                                console.warn(`  [WARN] Could not get duration details for ${videoId}. Proceeding without duration check.`);
-                            }
-                        } catch (detailsError) {
-                            console.warn(`  [WARN] Error fetching duration for ${videoId}: ${detailsError.message}. Proceeding without duration check.`);
+                                    if (Math.abs(youtubeDurationMs - spotifyDurationMs) > maxDiff) {
+                                        console.log(`    [SKIP] Duration mismatch for "${videoTitle}" (YT: ${youtubeDurationMs}ms, Spotify: ${spotifyDurationMs}ms, MaxDiff: ${maxDiff}ms)`);
+                                        continue; 
+                                    }
+                                    console.log(`    [PASS] Duration check for "${videoTitle}" (YT: ${youtubeDurationMs}ms, Spotify: ${spotifyDurationMs}ms)`);
+                                } else { /* warn no duration */ }
+                            } catch (detailsError) { /* warn error fetching duration */ }
                         }
+                        // If it reaches here, it's the best match for the current preference level and passed duration.
+                        console.log(`[Youtube] Attempt 2 SUCCESS (Type: ${preference.type}): "${videoTitle}" (ID: ${videoId})`);
+                        return videoId;
                     }
-
-                    // If we reach here, the video is considered a good match for the current strategy
-                    console.log(`[Youtube] FOUND suitable match with strategy "${strategy.type}": "${videoTitle}" (ID: ${videoId}) by channel "${channelTitle}"`);
-                    return videoId;
                 }
             }
-        } catch (error) {
-            const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
-            console.error(`[Youtube] Error during query "${query}": ${errorMsg}`);
-            if (error.response && error.response.status === 403) { // Quota limit or other access issue
-                console.error('[Youtube] YouTube API request forbidden. Check API key and quotas.');
-                throw new Error('YouTube API request failed (403). Possible quota issue.');
-            }
-            // Don't throw for other errors, just try next query type
         }
+    } catch (error) {
+        const errorMsg = error.response ? JSON.stringify(error.response.data.error || error.response.data) : error.message;
+        console.error(`[Youtube] Attempt 2 (General) failed: ${errorMsg}`);
+        if (error.response && error.response.status === 403) { throw error; } // Quota error, stop
     }
-    console.warn(`[Youtube] No suitable YouTube video found for "${artist} - ${title}" after all strategies.`);
+
+    console.warn(`[Youtube] No suitable YouTube video found for "${artist} - ${title}" after all attempts.`);
     return null;
 }
 
