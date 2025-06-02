@@ -1,0 +1,5 @@
+https://console.cloud.google.com/
+
+youtube.data.api.v3
+Enable
+Credentials > Create Credentials > API Key
