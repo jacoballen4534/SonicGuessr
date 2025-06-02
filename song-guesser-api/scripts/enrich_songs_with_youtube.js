@@ -56,7 +56,7 @@ async function enrichSongsWithYouTube() {
               AND spotify_track_id NOT LIKE 'ERROR_%' 
               AND youtube_video_id IS NULL
               AND (is_active = 1 OR is_active IS NULL)
-            LIMIT 50; -- Process in batches to manage API quotas
+            LIMIT 80; -- Process in batches to manage API quotas
         `;
         db.all(sql, [], (err, rows) => {
             if (err) return reject(err);
