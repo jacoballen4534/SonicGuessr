@@ -17,10 +17,11 @@ function getTodayDateString() {
 
 async function curateDailySongs() {
     const db = getDb();
-    console.log(`[${new Date().toISOString()}] Running daily song curation job...`);
     const today = getTodayDateString();
+    console.log(`[${new Date().toISOString()}] Running daily song curation job for ${today}...`);
 
     return new Promise((resolve, reject) => {
+        // Check if challenges for today already exist
         db.get('SELECT COUNT(*) as count FROM daily_challenges WHERE challenge_date = ?', [today], async (err, row) => {
             if (err) {
                 console.error('Error checking existing daily songs:', err.message);
@@ -31,112 +32,153 @@ async function curateDailySongs() {
                 return resolve();
             }
 
-            try {
-                console.log(`No songs for ${today} found. Fetching up to ${DAILY_SONG_COUNT} tracks...`);
-                const tracksForChallenge = await spotifyService.getTracksForDailyChallenge(DAILY_SONG_COUNT);
-                
-                if (!tracksForChallenge || tracksForChallenge.length === 0) {
-                    console.error('No tracks returned from music source service for daily challenge.');
-                    // getTracksForDailyChallenge should throw if it's a critical failure to get any tracks.
-                    return reject(new Error('No tracks fetched from Spotify/YouTube for daily challenge.'));
-                }
+            console.log(`No songs for ${today} found in daily_challenges. Attempting to curate from curated_songs table...`);
 
-                if (tracksForChallenge.length < DAILY_SONG_COUNT) {
-                    console.warn(`Fetched only ${tracksForChallenge.length} tracks, less than the desired ${DAILY_SONG_COUNT}. Proceeding with these.`);
-                }
+            try {
+                // Step 1: Select random, eligible songs from curated_songs table
+                // Songs must have all necessary fields populated, including youtube_video_id
+                // and not have been used too recently (e.g., in the last 30 days).
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().slice(0,10);
+
+                const selectCuratedSql = `
+                    SELECT 
+                        id AS curated_song_db_id, /* ID from curated_songs table */
+                        title, 
+                        artist, 
+                        album_art_url, 
+                        duration_ms, 
+                        youtube_video_id,
+                        spotify_track_id AS track_id_from_source /* Use spotify_track_id as the source ID */
+                    FROM curated_songs
+                    WHERE 
+                        spotify_track_id IS NOT NULL AND spotify_track_id NOT LIKE 'SPOTIFY_%' AND spotify_track_id NOT LIKE 'ERROR_%'
+                        AND youtube_video_id IS NOT NULL AND youtube_video_id NOT LIKE 'YOUTUBE_%' AND youtube_video_id NOT LIKE 'ERROR_%'
+                        AND title IS NOT NULL
+                        AND artist IS NOT NULL
+                        AND album_art_url IS NOT NULL
+                        AND duration_ms IS NOT NULL
+                        AND (is_active = 1 OR is_active IS NULL)
+                        AND (last_used_for_challenge IS NULL OR last_used_for_challenge < ?)
+                    ORDER BY RANDOM()
+                    LIMIT ?;
+                `;
                 
-                const validTracksForChallenge = tracksForChallenge.filter(track => {
-                    if (!track.youtube_video_id) {
-                        console.warn(`[Pre-Transaction Filter] Skipping track "${track.title}" (Spotify ID: ${track.track_id_from_source}) for storage due to missing youtube_video_id.`);
-                        return false;
-                    }
-                    return true;
+                const tracksToChallenge = await new Promise((resolveSelect, rejectSelect) => {
+                    db.all(selectCuratedSql, [thirtyDaysAgoStr, DAILY_SONG_COUNT], (selectErr, selectedRows) => {
+                        if (selectErr) {
+                            console.error("Error selecting songs from curated_songs:", selectErr.message);
+                            return rejectSelect(selectErr);
+                        }
+                        resolveSelect(selectedRows || []);
+                    });
                 });
 
-                if (validTracksForChallenge.length === 0) {
-                    const message = tracksForChallenge.length > 0 ? "All fetched tracks were invalid (missing youtube_video_id)." : "No valid tracks to process.";
-                    console.error(`${message} Cannot proceed with curation.`);
-                    return reject(new Error(`${message} Aborting curation.`));
+                if (!tracksToChallenge || tracksToChallenge.length === 0) {
+                    const msg = 'No eligible songs found in curated_songs table to form a daily challenge.';
+                    console.error(msg);
+                    // Not rejecting here, as it might be a temporary state. Job will try again next day.
+                    // Or, you might want to send an alert.
+                    return resolve(); // Resolve without creating challenge if no songs
                 }
 
-                db.run('BEGIN TRANSACTION;', function(beginErr) { // Using function for `this` context if needed by sqlite3, though not directly here.
-                    if (beginErr) {
-                        console.error('Failed to begin transaction:', beginErr.message);
-                        return reject(beginErr);
-                    }
+                if (tracksToChallenge.length < DAILY_SONG_COUNT) {
+                    console.warn(`[Curator] Fetched only ${tracksToChallenge.length} eligible songs from curated_songs, less than desired ${DAILY_SONG_COUNT}.`);
+                }
 
-                    const insertStmt = db.prepare(`
-                        INSERT INTO daily_challenges 
-                        (challenge_date, song_order, source_name, track_id_from_source, title, artist, album_art_url, duration_ms, youtube_video_id) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    `);
+                console.log(`[Curator] Selected ${tracksToChallenge.length} songs from curated_songs to insert into daily_challenges.`);
 
-                    let successfulInserts = 0;
-                    const insertPromises = validTracksForChallenge.map((track, index) => {
-                        return new Promise((resolveInsert, rejectInsert) => {
-                            insertStmt.run(
-                                today, index + 1, track.source_name || 'spotify',
-                                track.track_id_from_source, track.title, track.artist,
-                                track.album_art_url, track.duration_ms, track.youtube_video_id,
-                                function(runErr) { // Using `function` for `this` context
-                                    if (runErr) {
-                                        console.error(`Error inserting song: "${track.title}" (SpotifyID: ${track.track_id_from_source}). Error: ${runErr.message}`);
-                                        rejectInsert(runErr); // Reject promise for this specific insert
-                                    } else {
-                                        successfulInserts++;
-                                        resolveInsert();
-                                    }
-                                }
-                            );
-                        });
-                    });
+                // Step 2: Insert selected songs into daily_challenges table
+                // and update last_used_for_challenge in curated_songs
+                const insertDailyChallengeSql = `
+                    INSERT INTO daily_challenges 
+                    (challenge_date, song_order, source_name, track_id_from_source, title, artist, album_art_url, duration_ms, youtube_video_id) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `;
+                const updateCuratedSql = `
+                    UPDATE curated_songs 
+                    SET last_used_for_challenge = ? 
+                    WHERE id = ?
+                `;
 
-                    Promise.all(insertPromises)
-                        .then(() => {
-                            // All inserts were successful
-                            insertStmt.finalize((finalizeErr) => {
-                                if (finalizeErr) {
-                                    console.error('Finalize statement error after successful inserts:', finalizeErr.message);
-                                    db.run('ROLLBACK;', (rbErr) => {
-                                        if (rbErr) console.error('Rollback error on finalizeErr:', rbErr.message);
-                                        reject(finalizeErr); // Reject the main promise
+                // Use a transaction for inserting into daily_challenges and updating curated_songs
+                db.serialize(() => {
+                    db.run('BEGIN TRANSACTION;', async (txErr) => {
+                        if (txErr) {
+                            console.error("Error beginning transaction:", txErr.message);
+                            return reject(txErr);
+                        }
+
+                        let songsSuccessfullyInserted = 0;
+                        try {
+                            const dailyChallengeStmt = db.prepare(insertDailyChallengeSql);
+                            const updateCuratedStmt = db.prepare(updateCuratedSql);
+
+                            for (let i = 0; i < tracksToChallenge.length; i++) {
+                                const track = tracksToChallenge[i];
+                                const songOrder = i + 1;
+                                
+                                await new Promise((resolveRun, rejectRun) => {
+                                    dailyChallengeStmt.run(
+                                        today,
+                                        songOrder,
+                                        'curated_spotify', // Source name indicating it's from our curated list, originally from Spotify
+                                        track.track_id_from_source,
+                                        track.title,
+                                        track.artist,
+                                        track.album_art_url,
+                                        track.duration_ms,
+                                        track.youtube_video_id,
+                                        (runErr) => {
+                                            if (runErr) {
+                                                console.error('Error inserting song into daily_challenges:', track.title, runErr.message);
+                                                return rejectRun(runErr); // This will trigger catch and rollback
+                                            }
+                                            songsSuccessfullyInserted++;
+                                            resolveRun();
+                                        }
+                                    );
+                                });
+                                
+                                // Update last_used_for_challenge for the song in curated_songs
+                                await new Promise((resolveUpdate, rejectUpdate) => {
+                                     updateCuratedStmt.run(today, track.curated_song_db_id, (updateErr) => {
+                                        if (updateErr) {
+                                            console.error('Error updating last_used_for_challenge for curated_song ID:', track.curated_song_db_id, updateErr.message);
+                                            // Decide if this should also rollback. For now, log and continue.
+                                        }
+                                        resolveUpdate();
                                     });
-                                    return;
-                                }
-
-                                db.run('COMMIT;', (commitErr) => {
-                                    if (commitErr) {
-                                        console.error('Transaction commit error:', commitErr.message);
-                                        // Attempt rollback, though transaction might already be inactive
-                                        db.run('ROLLBACK;', (rbErr) => {
-                                            if (rbErr) console.error('Rollback error on commitErr:', rbErr.message);
-                                            reject(commitErr); // Reject the main promise
-                                        });
-                                    } else {
-                                        console.log(`Successfully curated and stored ${successfulInserts} songs for ${today}.`);
-                                        resolve(); // Resolve the main promise
-                                    }
                                 });
-                            });
-                        })
-                        .catch((error) => { // This catch is for Promise.all rejection (an insert failed)
-                            console.error('One or more song inserts failed, initiating rollback:', error.message);
-                            // It's good practice to finalize the statement even on failure.
-                            insertStmt.finalize((finalizeErrOnFail) => {
-                                if (finalizeErrOnFail) {
-                                    console.error('Finalize statement error during error handling (rollback path):', finalizeErrOnFail.message);
-                                }
-                                db.run('ROLLBACK;', (rbErr) => {
-                                    if (rbErr) console.error('Rollback error after insert error:', rbErr.message);
-                                    reject(error); // Reject main promise with the original insert error
-                                });
-                            });
-                        });
-                }); // End of db.run('BEGIN TRANSACTION;') callback
+                            }
 
-            } catch (curationError) { // This catch is mainly for errors from spotifyService.getTracksForDailyChallenge
-                console.error('Error during daily song curation process (before transaction attempt or in track fetching):', curationError.message, curationError.stack);
-                // No db.run('ROLLBACK;') here as transaction might not have started or already handled by inner logic.
+                            dailyChallengeStmt.finalize();
+                            updateCuratedStmt.finalize();
+                            
+                            db.run('COMMIT;', (commitErr) => {
+                                if (commitErr) {
+                                    console.error('Transaction commit error:', commitErr.message);
+                                    return reject(commitErr); // Rollback should be attempted by error handler
+                                }
+                                console.log(`[Curator] Successfully curated and stored ${songsSuccessfullyInserted} songs for ${today}.`);
+                                resolve();
+                            });
+
+                        } catch (processingError) {
+                            console.error('Error during song processing and insertion transaction:', processingError.message);
+                            db.run('ROLLBACK;', (rbErr) => {
+                                if (rbErr) console.error('Rollback error on processingError:', rbErr.message);
+                                reject(processingError);
+                            });
+                        }
+                    });
+                });
+
+            } catch (curationError) {
+                console.error('Error during daily song curation process:', curationError.message, curationError.stack);
+                // Ensure rollback is attempted if transaction was started and error occurred before commit/rollback logic
+                // The transaction block itself has a catch that should handle rollback.
                 reject(curationError);
             }
         });
@@ -151,24 +193,24 @@ function startDailyJob() {
             await dbInitializationPromise; 
             await curateDailySongs();
         } catch (error) {
-            // The error from curateDailySongs (if it rejects) will be caught here.
-            // Error logging is already done within curateDailySongs or its called functions.
             console.error("Daily song curation cron job failed:", error.message);
         }
     }, {
         scheduled: true,
-        timezone: "UTC"
+        timezone: "UTC" // Example: Run at 1 AM UTC
     });
-    console.log('Daily song curation job scheduled for 1:00 AM UTC.');
+    console.log('Daily song curation job scheduled (e.g., 1:00 AM UTC). Check timezone.');
 
-    // Initial run on startup
+    // Initial run on startup after a delay to ensure DB is fully ready and other startups might have finished
     (async () => {
         try {
+            console.log('Waiting for DB and a moment before initial song curation on startup...');
             await dbInitializationPromise; 
-            console.log('Database initialized. Attempting initial song curation on startup...');
+            await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+            
+            console.log('Attempting initial song curation on startup...');
             await curateDailySongs();
         } catch (error) {
-            // Error from curateDailySongs on startup
             console.error("Initial song curation on startup failed:", error.message);
         }
     })();
