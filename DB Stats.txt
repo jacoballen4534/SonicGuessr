@@ -1,0 +1,87 @@
+Total rows
+SELECT COUNT(*) as total_curated_songs
+FROM curated_songs;
+
+
+
+SPOTIFY
+Waiting for spotify enrichment
+SELECT COUNT(*) as spotify_pending_enrichment
+FROM curated_songs
+WHERE spotify_track_id IS NULL AND (is_active = 1 OR is_active IS NULL);
+
+Finished successfully
+SELECT COUNT(*) as spotify_successfully_enriched
+FROM curated_songs
+WHERE spotify_track_id IS NOT NULL 
+  AND spotify_track_id NOT LIKE 'SPOTIFY_%' 
+  AND spotify_track_id NOT LIKE 'ERROR_%'; 
+  -- Add any other prefixes you used for marking Spotify issues
+
+
+Failed
+SELECT COUNT(*) as spotify_enrichment_failed_or_not_found
+FROM curated_songs
+WHERE spotify_track_id LIKE 'SPOTIFY_%' 
+   OR spotify_track_id LIKE 'ERROR_DURING_ENRICHMENT_%' 
+   OR spotify_track_id LIKE 'ERROR_FETCHING_DETAILS_%';
+   -- Add other specific markers you used in markSongAsProblematic for Spotify
+
+
+
+
+Youtube
+Ready for enrichment
+SELECT COUNT(*) as youtube_pending_enrichment
+FROM curated_songs
+WHERE spotify_track_id IS NOT NULL 
+  AND spotify_track_id NOT LIKE 'SPOTIFY_%' 
+  AND spotify_track_id NOT LIKE 'ERROR_%'
+  AND youtube_video_id IS NULL 
+  AND (is_active = 1 OR is_active IS NULL); -- Only consider active songs for pending
+
+
+Finished successfully
+SELECT COUNT(*) as youtube_successfully_enriched
+FROM curated_songs
+WHERE spotify_track_id IS NOT NULL 
+  AND spotify_track_id NOT LIKE 'SPOTIFY_%' 
+  AND spotify_track_id NOT LIKE 'ERROR_%'
+  AND youtube_video_id IS NOT NULL 
+  AND youtube_video_id NOT LIKE 'YOUTUBE_%' 
+  AND youtube_video_id NOT LIKE 'ERROR_%';
+  -- Add any other prefixes you used for marking YouTube issues
+
+
+Failed
+SELECT COUNT(*) as youtube_enrichment_failed_or_not_found
+FROM curated_songs
+WHERE spotify_track_id IS NOT NULL 
+  AND spotify_track_id NOT LIKE 'SPOTIFY_%' 
+  AND spotify_track_id NOT LIKE 'ERROR_%'
+  AND (youtube_video_id LIKE 'YOUTUBE_%' OR youtube_video_id LIKE 'ERROR_DURING_YOUTUBE_ENRICH');
+  -- Add other specific markers you used in markSongYouTubeStatus
+
+Reset failed rows (to re-try)
+UPDATE curated_songs
+SET youtube_video_id = NULL
+WHERE spotify_track_id IS NOT NULL 
+  AND spotify_track_id NOT LIKE 'SPOTIFY_%' 
+  AND spotify_track_id NOT LIKE 'ERROR_%'
+  AND (youtube_video_id LIKE 'YOUTUBE_%' OR youtube_video_id LIKE 'ERROR_DURING_YOUTUBE_ENRICH');
+  -- Add other specific markers you used in markSongYouTubeStatus
+
+
+
+
+
+Fully complete
+SELECT COUNT(*) as ready_for_challenge
+FROM curated_songs
+WHERE spotify_track_id IS NOT NULL 
+  AND spotify_track_id NOT LIKE 'SPOTIFY_%' 
+  AND spotify_track_id NOT LIKE 'ERROR_%'
+  AND youtube_video_id IS NOT NULL 
+  AND youtube_video_id NOT LIKE 'YOUTUBE_%' 
+  AND youtube_video_id NOT LIKE 'ERROR_%'
+  AND (is_active = 1 OR is_active IS NULL);

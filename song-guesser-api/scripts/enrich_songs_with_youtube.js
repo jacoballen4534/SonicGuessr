@@ -13,6 +13,9 @@ const DELAY_BETWEEN_YOUTUBE_CALLS_MS = 2000; // 2 seconds to be very safe with q
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function markSongYouTubeStatus(db, curatedSongId, youtube_id_or_status_marker) {
+    // This function now only updates if youtube_video_id IS NULL,
+    // meaning if a real ID was found, it won't be overwritten by a later "NOT_FOUND" marker
+    // for the same song in an unlikely scenario.
     const sql = `UPDATE curated_songs SET youtube_video_id = ? WHERE id = ? AND youtube_video_id IS NULL`;
     return new Promise((resolve, reject) => {
         db.run(sql, [youtube_id_or_status_marker, curatedSongId], function(err) {
@@ -21,7 +24,7 @@ async function markSongYouTubeStatus(db, curatedSongId, youtube_id_or_status_mar
                 return reject(err);
             }
             if (this.changes > 0) {
-                if (youtube_id_or_status_marker && !youtube_id_or_status_marker.startsWith('YOUTUBE_')) {
+                if (youtube_id_or_status_marker && !youtube_id_or_status_marker.startsWith('YOUTUBE_') && !youtube_id_or_status_marker.startsWith('ERROR_')) {
                     console.log(`  SUCCESS: Found YouTube ID "${youtube_id_or_status_marker}" for song ID ${curatedSongId}.`);
                 } else {
                     console.log(`  Marked song ID ${curatedSongId} with YouTube status: "${youtube_id_or_status_marker}".`);
@@ -39,21 +42,20 @@ async function enrichSongsWithYouTube() {
     console.log('Database initialized. Starting YouTube enrichment process...');
 
     if (!YOUTUBE_API_KEY) {
-        console.error('YOUTUBE_API_KEY is not configured in your .env/config.js. Aborting YouTube enrichment.');
+        console.error('YOUTUBE_API_KEY is not configured. Aborting YouTube enrichment.');
         return;
     }
 
     const songsToEnrich = await new Promise((resolve, reject) => {
-        // Select songs that have Spotify details but no YouTube ID yet, and are active
         const sql = `
             SELECT id, title, artist, duration_ms 
             FROM curated_songs 
             WHERE spotify_track_id IS NOT NULL 
-              AND spotify_track_id NOT LIKE 'SPOTIFY_%' /* Avoid those marked problematic from Spotify step */
+              AND spotify_track_id NOT LIKE 'SPOTIFY_%' 
               AND spotify_track_id NOT LIKE 'ERROR_%' 
               AND youtube_video_id IS NULL
               AND (is_active = 1 OR is_active IS NULL)
-            LIMIT 2 -- Process in batches to manage API quotas
+            LIMIT 80; -- Process in batches to manage API quotas
         `;
         db.all(sql, [], (err, rows) => {
             if (err) return reject(err);
@@ -68,11 +70,12 @@ async function enrichSongsWithYouTube() {
 
     console.log(`Found ${songsToEnrich.length} songs to enrich with YouTube video IDs.`);
     let songsUpdatedWithVideoId = 0;
-    let songsMarkedNotFound = 0;
-    let songsErrored = 0;
+    let songsMarkedNotFound = 0; // Songs where search completed but found nothing suitable
+    let songsSkippedDueToErrorThisRun = 0; // Songs that errored and will be retried (includes quota error song)
 
-    for (const song of songsToEnrich) {
-        console.log(`\nProcessing for YouTube ID: "${song.title}" by ${song.artist}`);
+    for (let i = 0; i < songsToEnrich.length; i++) {
+        const song = songsToEnrich[i];
+        console.log(`\nProcessing (${i + 1}/${songsToEnrich.length}): "${song.title}" by ${song.artist}`);
         
         try {
             const youtubeVideoId = await musicSourceService.searchYouTubeVideo(
@@ -80,31 +83,59 @@ async function enrichSongsWithYouTube() {
                 song.artist, 
                 song.duration_ms 
             );
-            await delay(DELAY_BETWEEN_YOUTUBE_CALLS_MS); // Delay between each song's Youtube
 
             if (youtubeVideoId) {
                 const changes = await markSongYouTubeStatus(db, song.id, youtubeVideoId);
                 if (changes > 0) songsUpdatedWithVideoId++;
             } else {
-                console.warn(`  No suitable YouTube video found for "${song.title}" by ${song.artist}.`);
+                // searchYouTubeVideo returned null, meaning no suitable video was found after all its attempts
+                console.warn(`  No suitable YouTube video found for "${song.title}" by ${song.artist} (search returned null).`);
                 await markSongYouTubeStatus(db, song.id, 'Youtube_NOT_FOUND');
                 songsMarkedNotFound++;
             }
         } catch (error) {
-            console.error(`  Error during Youtube/update for song "${song.title}": ${error.message}`);
-            songsErrored++;
-            try {
-                await markSongYouTubeStatus(db, song.id, 'ERROR_DURING_YOUTUBE_ENRICH');
-            } catch (markError) {
-                console.error(`  Additionally, failed to mark song ID ${song.id} as errored: ${markError.message}`);
+            songsSkippedDueToErrorThisRun++; // Count this song as skipped in this run due to error
+            console.error(`  Error processing song "${song.title}": ${error.message}`);
+            
+            let isQuotaError = false;
+            // Axios errors (from direct calls in this script if any, or if searchYouTubeVideo re-throws raw Axios error)
+            if (error.isAxiosError && error.response && error.response.status === 403) {
+                isQuotaError = true;
+            } 
+            // Check for specific error message if searchYouTubeVideo throws a custom error object or string for 403
+            else if (error.message && error.message.toLowerCase().includes('quota') || (error.message && error.message.includes('403'))) {
+                isQuotaError = true;
             }
+
+            if (isQuotaError) {
+                console.error('>>> YouTube API quota likely reached (403 Forbidden) or other API access error. Stopping enrichment for this run. <<<');
+                console.error(`    The current song ("${song.title}") and subsequent songs in this batch were not processed and will be retried later.`);
+                break; // Exit the loop to stop processing more songs
+            } else {
+                // For other types of errors not related to quota, mark the song as problematic in the DB
+                console.log(`    Marking song "${song.title}" as 'ERROR_DURING_YOUTUBE_ENRICH' in DB due to non-quota error.`);
+                try {
+                    await markSongYouTubeStatus(db, song.id, 'ERROR_DURING_YOUTUBE_ENRICH');
+                    // songsMarkedNotFound++; // This counter is for "search completed but found nothing"
+                                          // We can use songsSkippedDueToErrorThisRun to reflect errors that didn't result in a DB mark change
+                                          // Or add a new counter for "songsMarkedErrorInDB"
+                } catch (markError) {
+                    console.error(`  Additionally, failed to mark song ID ${song.id} as errored: ${markError.message}`);
+                }
+            }
+        }
+
+        // Delay between processing different songs, unless we broke out of the loop
+        if (i < songsToEnrich.length - 1) {
+            await delay(DELAY_BETWEEN_YOUTUBE_CALLS_MS);
         }
     }
 
-    console.log(`\n--- YouTube Enrichment Complete ---`);
+    console.log(`\n--- YouTube Enrichment Run Complete ---`);
     console.log(`Songs successfully updated with YouTube Video ID: ${songsUpdatedWithVideoId}`);
-    console.log(`Songs marked as no YouTube video found: ${songsMarkedNotFound}`);
-    console.log(`Songs errored during processing: ${songsErrored}`);
+    console.log(`Songs where search completed but no suitable video found (marked Youtube_NOT_FOUND): ${songsMarkedNotFound}`);
+    console.log(`Songs that encountered an error during processing this run (may include quota error song): ${songsSkippedDueToErrorThisRun}`);
+    console.log(`Remaining songs pending YouTube enrichment (approx, run script again to see precise): ${songsToEnrich.length - (songsUpdatedWithVideoId + songsMarkedNotFound + songsSkippedDueToErrorThisRun)}`);
 }
 
 // Run the enrichment process
