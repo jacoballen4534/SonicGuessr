@@ -4,21 +4,81 @@ const path = require('path');
 const { getDb, dbInitializationPromise } = require('../services/database-service');
 const musicSourceService = require('../services/music-source-service');
 
-const DELAY_BETWEEN_SPOTIFY_CALLS_MS = 1100; // Respect rate limits
-
+const DELAY_BETWEEN_SPOTIFY_CALLS_MS = 250; // Respect rate limits
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// Helper function to normalize text for comparison
+function normalizeText(text) {
+    if (!text) return '';
+    return text
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '') // Remove most punctuation (keeps spaces)
+        .replace(/\s+/g, ' ')       // Normalize multiple spaces to one
+        .trim();
+}
+
+// Helper function to find the best match from Spotify search results
+function findBestSpotifyMatch(localSong, spotifyResults) {
+    const normalizedLocalTitle = normalizeText(localSong.title);
+    const normalizedLocalArtist = normalizeText(localSong.artist);
+
+    let bestMatch = null;
+    let highestScore = -1;
+
+    for (const spotifyTrack of spotifyResults) {
+        if (!spotifyTrack.title || !spotifyTrack.artist) continue;
+
+        const normalizedSpotifyTitle = normalizeText(spotifyTrack.title);
+        const normalizedSpotifyArtist = normalizeText(spotifyTrack.artist);
+        let currentScore = 0;
+
+        // Artist matching (crucial)
+        if (normalizedSpotifyArtist.includes(normalizedLocalArtist) || 
+            normalizedLocalArtist.includes(normalizedSpotifyArtist)) {
+            currentScore += 5; // Strong indicator
+            if (normalizedSpotifyArtist === normalizedLocalArtist) {
+                currentScore += 5; // Exact artist match is even better
+            }
+        } else {
+            continue; // If artist doesn't match well, probably not the right song
+        }
+
+        // Title matching
+        if (normalizedSpotifyTitle === normalizedLocalTitle) {
+            currentScore += 10; // Exact title match is best
+        } else if (normalizedSpotifyTitle.includes(normalizedLocalTitle) || 
+                   normalizedLocalTitle.includes(normalizedSpotifyTitle)) {
+            currentScore += 3; // Contains match is okay
+        }
+        
+        // Bonus if original local title (with quotes) is exactly in spotify title
+        if (spotifyTrack.title.includes(localSong.title)) {
+            currentScore += 2;
+        }
+
+
+        if (currentScore > highestScore) {
+            highestScore = currentScore;
+            bestMatch = spotifyTrack;
+        }
+    }
+    // Define a minimum score threshold for a confident match
+    if (bestMatch && highestScore >= 8) { // Adjust threshold as needed (e.g. >=8 means good artist + some title similarity)
+        console.log(`    Confident match found with score ${highestScore}: Spotify's "${bestMatch.title}" by "${bestMatch.artist}" for local "${localSong.title}" by "${localSong.artist}"`);
+        return bestMatch;
+    }
+    return null;
+}
+
+
 async function markSongAsProblematic(db, curatedSongId, statusMarker = 'SPOTIFY_PROBLEM') {
-    // Make the status marker unique for each song to avoid UNIQUE constraint violations
-    // on spotify_track_id if multiple songs have the same problem status.
     const uniqueStatusMarker = `${statusMarker}_${curatedSongId}`;
-    
-    const sql = `UPDATE curated_songs SET spotify_track_id = ?, is_active = 0 WHERE id = ?`;
+    const sql = `UPDATE curated_songs SET spotify_track_id = ?, is_active = 0 WHERE id = ? AND spotify_track_id IS NULL`;
     return new Promise((resolve, reject) => {
         db.run(sql, [uniqueStatusMarker, curatedSongId], function(err) {
             if (err) {
                 console.error(`  Error marking song ID ${curatedSongId} with status "${uniqueStatusMarker}": ${err.message}`);
-                return reject(err); // Propagate error if needed, or just log and resolve
+                return reject(err);
             }
             if (this.changes > 0) {
                 console.log(`  Marked song ID ${curatedSongId} as inactive with Spotify status: "${uniqueStatusMarker}".`);
@@ -51,9 +111,8 @@ async function enrichSongsWithSpotify() {
         const sql = `
             SELECT id, title, artist, year 
             FROM curated_songs 
-            WHERE spotify_track_id IS NULL 
-              AND (is_active = 1 OR is_active IS NULL) 
-            -- LIMIT 10 -- Process in batches if you have many
+            WHERE spotify_track_id IS NULL AND (is_active = 1 OR is_active IS NULL) 
+            -- LIMIT 10 -- For testing smaller batches
         `;
         db.all(sql, [], (err, rows) => {
             if (err) return reject(err);
@@ -71,90 +130,88 @@ async function enrichSongsWithSpotify() {
     let songsMarkedProblematic = 0;
     
     for (const song of songsToEnrich) {
-        console.log(`\nProcessing: "${song.title}" by ${song.artist} (${song.year || 'N/A'})`);
+        console.log(`\nProcessing: "${song.title}" by "${song.artist}" (Year: ${song.year || 'N/A'})`);
+        let spotifyTrackForDb = null;
+        let foundMatchConfidence = false;
+
+        // Attempt 1: Precise search (title, artist, year)
         let searchQuery = `track:${song.title} artist:${song.artist}`;
-        if (song.year) {
-            searchQuery += ` year:${song.year}`;
+        if (song.year) { searchQuery += ` year:${song.year}`; }
+        
+        console.log(`  Attempt 1: Precise search: "${searchQuery}"`);
+        let searchResults = await musicSourceService.searchTracksOnSpotify(searchQuery, 3, spotifyToken);
+        await delay(DELAY_BETWEEN_SPOTIFY_CALLS_MS);
+        let potentialMatch = findBestSpotifyMatch(song, searchResults);
+
+        if (potentialMatch) {
+            foundMatchConfidence = true;
+        } else {
+            // Attempt 2: Broader search (title, artist only)
+            console.log(`  Attempt 2: Broader search (title & artist)...`);
+            searchQuery = `track:${song.title} artist:${song.artist}`;
+            searchResults = await musicSourceService.searchTracksOnSpotify(searchQuery, 5, spotifyToken);
+            await delay(DELAY_BETWEEN_SPOTIFY_CALLS_MS);
+            potentialMatch = findBestSpotifyMatch(song, searchResults);
+            if (potentialMatch) foundMatchConfidence = true;
+        }
+        
+        if (!foundMatchConfidence) {
+            // Attempt 3: Even broader search (general query terms, no field specifiers)
+            console.log(`  Attempt 3: General keyword search...`);
+            searchQuery = `${song.title} ${song.artist}`;
+            searchResults = await musicSourceService.searchTracksOnSpotify(searchQuery, 5, spotifyToken);
+            await delay(DELAY_BETWEEN_SPOTIFY_CALLS_MS);
+            potentialMatch = findBestSpotifyMatch(song, searchResults);
+            if (potentialMatch) foundMatchConfidence = true;
         }
 
-        try {
-            const searchResults = await musicSourceService.searchTracksOnSpotify(searchQuery, 1, spotifyToken);
-            await delay(DELAY_BETWEEN_SPOTIFY_CALLS_MS);
-
-            if (searchResults && searchResults.length > 0) {
-                const spotifyTrackBasic = searchResults[0];
-                console.log(`  Spotify search found: "${spotifyTrackBasic.title}" by ${spotifyTrackBasic.artist} (ID: ${spotifyTrackBasic.id})`);
-
-                const detailedTracks = await musicSourceService.fetchFullTrackDetails([spotifyTrackBasic.id], spotifyToken);
+        if (foundMatchConfidence && potentialMatch) {
+            console.log(`  Confident Spotify Match: "${potentialMatch.title}" by "${potentialMatch.artist}" (ID: ${potentialMatch.id})`);
+            try {
+                const detailedTracks = await musicSourceService.fetchFullTrackDetails([potentialMatch.id], spotifyToken);
                 await delay(DELAY_BETWEEN_SPOTIFY_CALLS_MS);
 
                 if (detailedTracks && detailedTracks.length > 0) {
-                    const spotifyTrackFull = detailedTracks[0];
-                    
+                    spotifyTrackForDb = detailedTracks[0];
                     const updateSql = `
                         UPDATE curated_songs 
-                        SET spotify_track_id = ?, 
-                            title = ?,             /* Use Spotify's canonical title */
-                            artist = ?,            /* Use Spotify's canonical artist */
-                            album_art_url = ?, 
-                            duration_ms = ?,
-                            is_active = 1          /* Mark as active since we found it */
-                        WHERE id = ? AND spotify_track_id IS NULL /* Only update if not already processed by another run */
+                        SET spotify_track_id = ?, title = ?, artist = ?, 
+                            album_art_url = ?, duration_ms = ?, is_active = 1
+                        WHERE id = ? AND spotify_track_id IS NULL
                     `;
-                    // Using Spotify's title/artist might be better for consistency
                     const updateValues = [
-                        spotifyTrackFull.id,
-                        spotifyTrackFull.title, 
-                        spotifyTrackFull.artist,
-                        spotifyTrackFull.album_art_url,
-                        spotifyTrackFull.duration_ms,
-                        song.id
+                        spotifyTrackForDb.id, spotifyTrackForDb.title, spotifyTrackForDb.artist,
+                        spotifyTrackForDb.album_art_url, spotifyTrackForDb.duration_ms, song.id
                     ];
-
                     await new Promise((resolveUpdate, rejectUpdate) => {
-                        db.run(updateSql, updateValues, function(updateErr) {
-                            if (updateErr) {
-                                console.error(`  DB UPDATE ERROR for "${spotifyTrackFull.title}": ${updateErr.message}`);
-                                // If it's a UNIQUE constraint error here, it means another process/run updated it.
-                                if (updateErr.code === 'SQLITE_CONSTRAINT') {
-                                    console.warn(`  Skipping update for "${spotifyTrackFull.title}", may have been processed by another instance or already has a Spotify ID.`);
-                                    resolveUpdate(); // Resolve so script can continue
-                                } else {
-                                    rejectUpdate(updateErr);
-                                }
-                                return;
-                            }
-                            if (this.changes > 0) {
-                                console.log(`  SUCCESS: Updated DB for "${spotifyTrackFull.title}" with Spotify details.`);
-                                songsUpdated++;
-                            } else {
-                                console.warn(`  DB UPDATE made 0 changes for "${spotifyTrackFull.title}". Song ID ${song.id} might have been updated by another process or already had Spotify ID.`);
-                            }
+                        db.run(updateSql, updateValues, function(updateErr) {  
+                            if (updateErr) { console.error(`DB UPDATE ERROR for "${spotifyTrackForDb.title}"`, updateErr); return rejectUpdate(updateErr); }
+                            if (this.changes > 0) { songsUpdated++; console.log(`  SUCCESS: Updated DB for "${spotifyTrackForDb.title}"`);}
+                            else { console.warn(`  DB UPDATE 0 changes for "${spotifyTrackForDb.title}". Already processed?`);}
                             resolveUpdate();
                         });
                     });
                 } else {
-                    console.warn(`  Spotify full details not found for track ID: ${spotifyTrackBasic.id}`);
-                    await markSongAsProblematic(db, song.id, 'SPOTIFY_DETAILS_NOT_FOUND');
+                    console.warn(`  Could not fetch full details for Spotify ID: ${potentialMatch.id}`);
+                    await markSongAsProblematic(db, song.id, 'SPOTIFY_DETAILS_FAIL');
                     songsMarkedProblematic++;
                 }
-            } else {
-                console.warn(`  No Spotify search results for "${song.title}" by ${song.artist}.`);
-                await markSongAsProblematic(db, song.id, 'SPOTIFY_SEARCH_NOT_FOUND');
+            } catch (detailError) {
+                console.error(`  Error fetching full details for "${potentialMatch.title}": ${detailError.message}`);
+                await markSongAsProblematic(db, song.id, 'ERROR_FETCHING_DETAILS');
                 songsMarkedProblematic++;
             }
-        } catch (error) {
-            console.error(`  Error processing song "${song.title}": ${error.message}`);
-            await markSongAsProblematic(db, song.id, 'ERROR_DURING_ENRICHMENT');
+        } else {
+            console.warn(`  No confident Spotify match found for "${song.title}" by "${song.artist}" after all attempts.`);
+            await markSongAsProblematic(db, song.id, 'SPOTIFY_NO_CONFIDENT_MATCH');
             songsMarkedProblematic++;
         }
     }
 
     console.log(`\n--- Spotify Enrichment Complete ---`);
-    console.log(`Songs successfully updated with Spotify details: ${songsUpdated}`);
-    console.log(`Songs marked as problematic (not found/error): ${songsMarkedProblematic}`);
+    console.log(`Songs successfully updated: ${songsUpdated}`);
+    console.log(`Songs marked as problematic: ${songsMarkedProblematic}`);
 }
-
 
 // Run the enrichment process
 enrichSongsWithSpotify().catch(err => {
