@@ -39,18 +39,17 @@ function initializeDatabase() {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 challenge_date TEXT NOT NULL, 
                 song_order INTEGER NOT NULL,
-                source_name TEXT NOT NULL, -- e.g., "spotify" (for metadata source)
-                track_id_from_source TEXT NOT NULL, -- Spotify track ID
+                source_name TEXT NOT NULL, 
+                track_id_from_source TEXT NOT NULL, 
                 title TEXT NOT NULL,
                 artist TEXT NOT NULL,
-                album_art_url TEXT, -- Spotify album art
-                duration_ms INTEGER, -- Spotify track duration
-                youtube_video_id TEXT, -- <<< ADDED: YouTube video ID for audio
+                album_art_url TEXT, 
+                duration_ms INTEGER, 
+                youtube_video_id TEXT, 
                 UNIQUE(challenge_date, song_order),
                 UNIQUE(challenge_date, track_id_from_source) 
             );
         `;
-        // Note: `preview_url` was removed from the schema above.
 
         const createScoresTable = `
             CREATE TABLE IF NOT EXISTS scores (
@@ -73,41 +72,37 @@ function initializeDatabase() {
             );
         `;
 
-                // New table for caching song suggestions
         const createSongSuggestionCacheTable = `
             CREATE TABLE IF NOT EXISTS song_suggestion_cache (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                spotify_track_id TEXT UNIQUE NOT NULL, -- To prevent duplicates
+                spotify_track_id TEXT UNIQUE NOT NULL,
                 title TEXT NOT NULL,
                 artist TEXT NOT NULL,
-                -- album_art_url TEXT, -- Optional: if you want to cache this too
                 fetched_at TEXT DEFAULT (datetime('now'))
             );
         `;
-        // Index for faster searching on title (and potentially artist later)
         const createSuggestionTitleIndex = `
             CREATE INDEX IF NOT EXISTS idx_suggestion_title ON song_suggestion_cache (title);
         `;
-         const createSuggestionArtistIndex = `
+        const createSuggestionArtistIndex = `
             CREATE INDEX IF NOT EXISTS idx_suggestion_artist ON song_suggestion_cache (artist);
         `;
 
-        // --- NEW TABLE FOR CURATED SONGS (from Billboard charts etc.) ---
+        // Updated curated_songs table (removed genres column)
         const createCuratedSongsTable = `
             CREATE TABLE IF NOT EXISTS curated_songs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
                 artist TEXT NOT NULL,
                 year INTEGER,
-                raw_rank_billboard TEXT, -- Optional: To store the rank from the chart
-                source_details TEXT,     -- Optional: To store info like "Billboard Hot 100"
+                raw_rank_billboard TEXT, 
+                source_details TEXT,     
                 spotify_track_id TEXT UNIQUE, 
                 album_art_url TEXT,          
                 duration_ms INTEGER,         
                 youtube_video_id TEXT,       
                 last_used_for_challenge DATE, 
-                is_active BOOLEAN DEFAULT 1,
-                genres TEXT  
+                is_active BOOLEAN DEFAULT 1
             );
         `;
         const createCuratedSongsTitleArtistYearIndex = `
@@ -117,16 +112,31 @@ function initializeDatabase() {
             CREATE INDEX IF NOT EXISTS idx_curated_songs_spotify_id ON curated_songs (spotify_track_id);
         `;
 
-        // SQL to add the column if the table already exists (run this once or ensure it's safe to run multiple times)
-        const alterCuratedSongsAddGenres = `
-            ALTER TABLE curated_songs ADD COLUMN genres TEXT;
+        // --- NEW TABLES FOR NORMALIZED GENRES ---
+        const createGenresTable = `
+            CREATE TABLE IF NOT EXISTS genres (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL COLLATE NOCASE 
+            );
+        `;
+        const createGenreNameIndex = `
+            CREATE INDEX IF NOT EXISTS idx_genre_name ON genres (name);
         `;
 
-        // --- END OF NEW TABLE FOR CURATED SONGS ---
-
+        const createCuratedSongGenresTable = `
+            CREATE TABLE IF NOT EXISTS curated_song_genres (
+                curated_song_id INTEGER NOT NULL,
+                genre_id INTEGER NOT NULL,
+                PRIMARY KEY (curated_song_id, genre_id),
+                FOREIGN KEY (curated_song_id) REFERENCES curated_songs (id) ON DELETE CASCADE,
+                FOREIGN KEY (genre_id) REFERENCES genres (id) ON DELETE CASCADE
+            );
+        `;
+        // --- END OF NEW TABLES FOR NORMALIZED GENRES ---
 
         db.serialize(() => {
             const promises = [];
+            // Existing tables
             promises.push(new Promise((res, rej) => db.run(createUsersTable, err => {
                 if (err) { console.error("Error creating users table:", err.message); return rej(err); }
                 console.log("Users table checked/created."); res();
@@ -143,8 +153,8 @@ function initializeDatabase() {
                 if (err) { console.error("Error creating sessions table:", err.message); return rej(err); }
                 console.log("Sessions table checked/created."); res();
             })));
-
-            // Add creation for the new table and its index
+            
+            // Song suggestion cache table and its indexes
             promises.push(new Promise((res, rej) => db.run(createSongSuggestionCacheTable, err => {
                 if (err) { console.error("Error creating song_suggestion_cache table:", err.message); return rej(err); }
                 console.log("Song suggestion cache table checked/created."); res();
@@ -158,7 +168,7 @@ function initializeDatabase() {
                 console.log("idx_suggestion_artist index checked/created."); res();
             })));
 
-            // --- ADDING CURATED_SONGS TABLE AND ITS INDEXES ---
+            // Curated songs table and its indexes (genres column removed from DDL here)
             promises.push(new Promise((res, rej) => db.run(createCuratedSongsTable, err => {
                 if (err) { console.error("Error creating curated_songs table:", err.message); return rej(err); }
                 console.log("Curated songs table checked/created."); res();
@@ -171,20 +181,21 @@ function initializeDatabase() {
                 if (err) { console.error("Error creating idx_curated_songs_spotify_id index:", err.message); return rej(err); }
                 console.log("idx_curated_songs_spotify_id index checked/created."); res();
             })));
-
-            // Attempt to add the genres column - this will fail if the column already exists, which is fine for this purpose.
-            // A more robust way would check if the column exists first.
-            promises.push(new Promise((res, rej) => db.run(alterCuratedSongsAddGenres, err => {
-                if (err && !err.message.includes('duplicate column name')) { // Ignore error if column already exists
-                    console.error("Error adding genres column to curated_songs:", err.message); 
-                    // We don't want to reject the whole DB init for this if table is already new.
-                } else if (!err) {
-                    console.log("Column 'genres' added to 'curated_songs' or already exists.");
-                }
-                res(); // Resolve even if it fails due to column existing
+            
+            // --- ADDING NEW GENRE TABLES AND INDEX ---
+            promises.push(new Promise((res, rej) => db.run(createGenresTable, err => {
+                if (err) { console.error("Error creating genres table:", err.message); return rej(err); }
+                console.log("Genres table checked/created."); res();
             })));
-
-            // --- END OF ADDING CURATED_SONGS ---
+            promises.push(new Promise((res, rej) => db.run(createGenreNameIndex, err => {
+                if (err) { console.error("Error creating idx_genre_name index:", err.message); return rej(err); }
+                console.log("idx_genre_name index checked/created."); res();
+            })));
+            promises.push(new Promise((res, rej) => db.run(createCuratedSongGenresTable, err => {
+                if (err) { console.error("Error creating curated_song_genres table:", err.message); return rej(err); }
+                console.log("Curated song genres linking table checked/created."); res();
+            })));
+            // --- END OF ADDING NEW GENRE TABLES ---
 
             Promise.all(promises).then(resolve).catch(reject);
         });
