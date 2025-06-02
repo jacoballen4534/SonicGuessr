@@ -11,7 +11,7 @@
 const express = require('express');
 const router = express.Router();
 const { getDb } = require('../services/database-service');
-const { SESSION_MAX_LEVELS } = require('../config'); // Assuming MAX_LEVELS is defined in config
+const { SESSION_MAX_LEVELS, DAILY_SONG_COUNT } = require('../config'); // Assuming MAX_LEVELS is defined in config
 const musicSourceService = require('../services/music-source-service');
 
 
@@ -36,35 +36,38 @@ router.get('/daily-challenge/songs', async (req, res) => {
     const dbInstance = getDb();
     let challengeCompletedToday = false;
 
-    // Check completion status only if user is authenticated
     if (req.isAuthenticated && req.isAuthenticated() && req.user && req.user.id) {
         try {
-            const checkPlayedSql = `
-                SELECT 1 
+            // Count how many distinct songs the user has scores for on today's challenge date
+            const countPlayedSql = `
+                SELECT COUNT(DISTINCT s.daily_challenge_id) as songs_played_count
                 FROM scores s
                 JOIN daily_challenges dc ON s.daily_challenge_id = dc.id
-                WHERE s.user_id = ? AND dc.challenge_date = ?
-                LIMIT 1;
+                WHERE s.user_id = ? AND dc.challenge_date = ?;
             `;
-            const playedRow = await new Promise((resolve, reject) => {
-                dbInstance.get(checkPlayedSql, [req.user.id, today], (err, row) => {
+            const playedResult = await new Promise((resolve, reject) => {
+                dbInstance.get(countPlayedSql, [req.user.id, today], (err, row) => {
                     if (err) return reject(err);
-                    resolve(row);
+                    resolve(row); // row will be { songs_played_count: X } or null if no scores
                 });
             });
-            if (playedRow) {
+
+            // DAILY_SONG_COUNT is the total number of songs in a daily challenge
+            if (playedResult && playedResult.songs_played_count >= DAILY_SONG_COUNT) {
                 challengeCompletedToday = true;
+                console.log(`[API GET /songs] User ${req.user.id} has completed all ${DAILY_SONG_COUNT} songs for ${today}.`);
+            } else {
+                console.log(`[API GET /songs] User ${req.user.id} has played ${playedResult ? playedResult.songs_played_count : 0}/${DAILY_SONG_COUNT} songs for ${today}.`);
             }
         } catch (err) {
             console.error("Error checking if challenge completed for user:", err.message);
+            // challengeCompletedToday remains false
         }
     } else {
-        // For guests, this flag from server will always be false.
-        // Client-side will need to manage guest "played today" state if desired.
-        challengeCompletedToday = false;
+        challengeCompletedToday = false; // For guests, server always reports as not completed
     }
 
-    const sql = `
+    const fetchSongsSql = `
         SELECT id, challenge_date, song_order, source_name, track_id_from_source, 
                title, artist, album_art_url, duration_ms, youtube_video_id 
         FROM daily_challenges 
@@ -72,20 +75,20 @@ router.get('/daily-challenge/songs', async (req, res) => {
         ORDER BY song_order ASC
     `;
     
-    dbInstance.all(sql, [today], (err, rows) => {
-        if (err) {
+    dbInstance.all(fetchSongsSql, [today], (err, rows) => {
+        if (err) { 
             console.error("Error fetching daily challenge songs:", err.message);
             return res.status(500).json({ error: 'Failed to retrieve daily challenge songs.' });
-        }
+         }
         if (!rows || rows.length === 0) {
             return res.status(404).json({ 
                 message: 'No daily challenge songs available for today. Please try again later.',
-                songs: [], // Send empty array for songs
+                songs: [], 
                 challengeCompletedToday 
             });
         }
         res.json({ 
-            songs: rows, // Send rows directly as they are full song objects
+            songs: rows, 
             challengeCompletedToday 
         });
     });
@@ -108,12 +111,13 @@ router.post('/daily-challenge/guess', async (req, res) => {
     if (userIsAuthenticated && userId) {
     try {
         const checkPlayedSql = `
-            SELECT 1 
+            SELECT COUNT(DISTINCT s.daily_challenge_id) as songs_played_count
             FROM scores s
             JOIN daily_challenges dc ON s.daily_challenge_id = dc.id
-            WHERE s.user_id = ? AND dc.challenge_date = ?
-            LIMIT 1;
+            WHERE s.user_id = ? AND dc.challenge_date = ?;
         `;
+
+
         const playedRow = await new Promise((resolve, reject) => {
             dbInstance.get(checkPlayedSql, [userId, today], (err, row) => {
                 if (err) return reject(err);
@@ -121,7 +125,8 @@ router.post('/daily-challenge/guess', async (req, res) => {
             });
         });
 
-        if (playedRow) {
+
+        if (playedRow && playedRow.songs_played_count >= DAILY_SONG_COUNT) {
                 console.log(`Authenticated User ${userId} attempted to guess but has already completed challenge for ${today}.`);
             return res.status(403).json({ 
                     correct: false,
@@ -148,7 +153,7 @@ router.post('/daily-challenge/guess', async (req, res) => {
 
         const isCorrect = guess.trim().toLowerCase() === song.title.trim().toLowerCase();
         let pointsAwarded = 0;
-        const maxLevels = SESSION_MAX_LEVELS || 5; 
+        const maxLevels = DAILY_SONG_COUNT || 5; 
         let responsePayload = {};
 
         if (isCorrect) {
