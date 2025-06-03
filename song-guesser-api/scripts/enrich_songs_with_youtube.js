@@ -57,7 +57,7 @@ async function enrichSongsWithYouTube() {
               AND youtube_video_id IS NULL
               AND (is_active = 1 OR is_active IS NULL)
             ORDER BY year DESC
-            LIMIT 300; -- Process in batches to manage API quotas
+            LIMIT 1000; -- Process in batches to manage API quotas
         `;
         db.all(sql, [], (err, rows) => {
             if (err) return reject(err);
