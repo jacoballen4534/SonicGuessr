@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiBaseUrl: 'https://your-raspberry-pi-domain.com/api' // Or your production API URL
+  apiBaseUrl: 'http://localhost:3000/api' // Or your production API URL
 };
