@@ -57,33 +57,33 @@ app.use((req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
 /**
  * Handle all other requests by rendering the Angular application.
  */
-// app.use((req, res, next) => {
-//   angularApp
-//     .handle(req)
-//     .then((response) =>
-//       response ? writeResponseToNodeResponse(response, res) : next(),
-//     )
-//     .catch(next);
-// });
-
-
-app.get('*', (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
-  console.log(`[SSR Server] Attempting to render: ${req.originalUrl} with AngularNodeAppEngine.`);
+app.use((req, res, next) => {
   angularApp
-    .handle(req) // Pass the Express req object
-    .then((response) => {
-      if (response) {
-        writeResponseToNodeResponse(response, res);
-      } else {
-        // If angularApp.handle doesn't produce a response (e.g. for non-GET or if it chooses not to handle)
-        next();
-      }
-    })
-    .catch((err) => {
-      console.error("[SSR Server] Error during angularApp.handle():", err);
-      next(err);
-    });
+    .handle(req)
+    .then((response) =>
+      response ? writeResponseToNodeResponse(response, res) : next(),
+    )
+    .catch(next);
 });
+
+
+// app.get('*', (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
+//   console.log(`[SSR Server] Attempting to render: ${req.originalUrl} with AngularNodeAppEngine.`);
+//   angularApp
+//     .handle(req) // Pass the Express req object
+//     .then((response) => {
+//       if (response) {
+//         writeResponseToNodeResponse(response, res);
+//       } else {
+//         // If angularApp.handle doesn't produce a response (e.g. for non-GET or if it chooses not to handle)
+//         next();
+//       }
+//     })
+//     .catch((err) => {
+//       console.error("[SSR Server] Error during angularApp.handle():", err);
+//       next(err);
+//     });
+// });
 
 
 /**
