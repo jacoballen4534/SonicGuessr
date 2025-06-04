@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiBaseUrl: 'https://your-raspberry-pi-domain.com/api' // Or your production API URL
+  apiBaseUrl: 'spliffmon.freeddns.org:5003/api' // Or your production API URL
 };
