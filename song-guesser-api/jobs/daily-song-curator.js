@@ -60,6 +60,7 @@ async function curateDailySongs() {
                         AND album_art_url IS NOT NULL
                         AND duration_ms IS NOT NULL
                         AND (is_active = 1 OR is_active IS NULL)
+                        AND year > 2005
                         AND (last_used_for_challenge IS NULL OR last_used_for_challenge < ?)
                     ORDER BY RANDOM()
                     LIMIT ?;
