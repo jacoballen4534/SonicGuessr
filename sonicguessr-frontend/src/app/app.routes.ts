@@ -8,6 +8,7 @@ import { Leaderboard } from './pages/leaderboard/leaderboard'; // Assuming this 
 import { Login } from './pages/login/login'; // Assuming this exists
 import { ProfileEdit } from './pages/profile-edit/profile-edit'; // <<< IMPORT YOUR NEW COMPONENT
 import { PracticeModeComponent } from './pages/practice-mode/practice-mode'; // <<< IMPORT
+import { GenrePracticeComponent } from './pages/genre-practice/genre-practice'; // <<< IMPORT
 
 export const routes: Routes = [
   { path: '', component: Home, pathMatch: 'full' },
@@ -16,6 +17,7 @@ export const routes: Routes = [
   { path: 'login', component: Login },
   { path: 'profile/edit', component: ProfileEdit }, // <<< ADD ROUTE FOR PROFILE EDIT
   { path: 'practice', component: PracticeModeComponent }, // <<< ADD ROUTE
+  { path: 'practice-by-genre', component: GenrePracticeComponent }, // <<< ADD ROUTE
 
   // Example of a route that might require authentication (you'd add a guard later)
   // { path: 'profile/edit', component: ProfileEdit, canActivate: [AuthGuard] }, 

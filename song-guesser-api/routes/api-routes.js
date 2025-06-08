@@ -273,6 +273,93 @@ router.get('/practice/random-song', async (req, res) => {
     }
 });
 
+// --- NEW: Endpoints for Genre Practice Mode ---
+
+// GET /api/genres - Fetches a list of all available genres
+router.get('/genres', async (req, res) => {
+    const dbInstance = getDb();
+    console.log(`[API Genres] Fetching all genres.`);
+    try {
+        const sql = `
+            SELECT id, name
+            FROM genres
+            WHERE name NOT LIKE 'mb_%' -- Exclude special MusicBrainz placeholder tags if any
+            ORDER BY name ASC;
+        `;
+        const genres = await new Promise((resolve, reject) => {
+            dbInstance.all(sql, [], (err, rows) => {
+                if (err) return reject(err);
+                resolve(rows || []);
+            });
+        });
+
+        res.json(genres);
+    } catch (err) {
+        console.error("[API Genres] Error fetching genre list:", err.message);
+        res.status(500).json({ error: 'Failed to retrieve genre list.' });
+    }
+});
+
+
+// GET /api/practice/random-song-by-genre?genreId=X
+router.get('/practice/random-song-by-genre', async (req, res) => {
+    const { genreId } = req.query;
+
+    if (!genreId) {
+        return res.status(400).json({ error: 'A genreId is required.' });
+    }
+
+    const id = parseInt(genreId, 10);
+    if (isNaN(id)) {
+        return res.status(400).json({ error: 'Invalid genreId provided.' });
+    }
+
+    console.log(`[API Practice] Fetching random song for genre ID: ${id}`);
+    const dbInstance = getDb();
+
+    try {
+        const sql = `
+            SELECT 
+                cs.title, 
+                cs.artist, 
+                cs.year,
+                cs.album_art_url, 
+                cs.duration_ms, 
+                cs.youtube_video_id,
+                cs.spotify_track_id AS track_id_from_source 
+            FROM curated_songs cs
+            JOIN curated_song_genres csg ON cs.id = csg.curated_song_id
+            WHERE csg.genre_id = ?
+              AND cs.youtube_video_id IS NOT NULL 
+              AND cs.spotify_track_id IS NOT NULL 
+              AND cs.spotify_track_id NOT LIKE 'SPOTIFY_%' AND cs.spotify_track_id NOT LIKE 'ERROR_%'
+              AND cs.youtube_video_id NOT LIKE 'YOUTUBE_%' AND cs.youtube_video_id NOT LIKE 'ERROR_%'
+              AND cs.album_art_url IS NOT NULL
+              AND cs.duration_ms IS NOT NULL
+              AND (cs.is_active = 1 OR cs.is_active IS NULL)
+            ORDER BY RANDOM()
+            LIMIT 1;
+        `;
+
+        const song = await new Promise((resolve, reject) => {
+            dbInstance.get(sql, [id], (err, row) => {
+                if (err) return reject(err);
+                resolve(row);
+            });
+        });
+
+        if (song) {
+            console.log(`[API Practice] Found song for genre ID ${id}: "${song.title}" by ${song.artist}`);
+            res.json(song);
+        } else {
+            console.log(`[API Practice] No playable songs found for genre ID ${id}.`);
+            res.status(404).json({ message: `No playable songs found for the selected genre. It may be a newly added genre with songs still being processed.` });
+        }
+    } catch (err) {
+        console.error(`[API Practice] Error fetching random song for genre ID ${id}:`, err.message);
+        res.status(500).json({ error: 'Failed to retrieve a random song.' });
+    }
+});// --- NEW: Endpoints for Genre Practice Mode ---
 
 router.patch('/user/profile', isAuthenticated, async (req, res) => {
     const userId = req.user.id; // Get user ID from the authenticated session

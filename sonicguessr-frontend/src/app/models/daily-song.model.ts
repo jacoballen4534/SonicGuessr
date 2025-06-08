@@ -10,4 +10,5 @@ export interface DailyChallengeSong {
   album_art_url?: string; // Optional if it might be missing
   duration_ms: number;
   youtube_video_id: string;
+  year: string
 }

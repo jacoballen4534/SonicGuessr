@@ -1,0 +1,72 @@
+<div class="genre-practice-page themed-background">
+  <header class="page-header card-style">
+    <h2>Practice by Genre</h2>
+    <p>Hone your skills! Pick a genre, get a random song, and guess away.</p>
+  </header>
+
+  <!-- Genre Selection Form -->
+  <section class="settings-area card-style">
+    <form [formGroup]="genreSelectionForm" (ngSubmit)="fetchNewSongByGenre()">
+      <h4>Select a Genre</h4>
+      <div class="form-row">
+        <div class="form-field">
+          <label for="genreId">Genre:</label>
+          <select id="genreId" formControlName="genreId">
+            <option value="" disabled>-- Choose a Genre --</option>
+            <option *ngFor="let genre of availableGenres$ | async" [value]="genre.id">
+              {{ genre.name }}
+            </option>
+          </select>
+        </div>
+        <button type="submit" class="button-cta" [disabled]="isLoadingSong || genreSelectionForm.invalid">
+          {{ isLoadingSong ? 'Finding...' : 'Get Random Song' }}
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Loading State -->
+  <div *ngIf="isLoadingSong" class="loading-state card-style">
+    <p>Finding a random song...</p>
+  </div>
+  
+  <!-- General Feedback (like errors or info messages when no song is active) -->
+  <app-feedback-display
+      *ngIf="feedbackDisplay_message && !activeSong"
+      [message]="feedbackDisplay_message"
+      [type]="feedbackDisplay_type"
+      [correctAnswer]="feedbackDisplay_correctAnswer">
+  </app-feedback-display>
+
+  <!-- Active Game Area (only shown when a song is loaded) -->
+  <div *ngIf="activeSong" class="active-game-area">
+    <section class="clue-area card-style">
+      <p class="song-year-info" *ngIf="activeSong?.year">From the year: <strong>{{ activeSong.year }}</strong></p>
+      <div class="album-art-container">
+        <img *ngIf="activeSong.album_art_url" [src]="activeSong.album_art_url" alt="Album art for the song" />
+      </div>
+    </section>
+
+    <section class="audio-controls-area card-style">
+      <p>Attempt {{ currentSnippetLevelIndex + 1 }} of {{ snippetLevels.length }}: {{ snippetLevels[currentSnippetLevelIndex].durationText || 'N/A' }}</p>
+      <div class="button-group">
+        <button class="button-cta" (click)="playCurrentSnippet()">Replay Snippet</button>
+        <button class="button-secondary" (click)="playNextSnippetLevel()" [disabled]="currentSnippetLevelIndex >= snippetLevels.length - 1">Next Snippet</button>
+      </div>
+    </section>
+
+    <app-feedback-display
+        *ngIf="feedbackDisplay_message && activeSong"
+        [message]="feedbackDisplay_message"
+        [type]="feedbackDisplay_type"
+        [correctAnswer]="feedbackDisplay_correctAnswer">
+    </app-feedback-display>
+
+    <section class="guess-input-area card-style">
+      <h4>Make Your Guess!</h4>
+      <app-guess-input (guessSubmitted)="handleUserGuess($event)"></app-guess-input>
+    </section>
+  </div>
+
+  <app-audio-player [videoId]="playbackVideoId" [startSeconds]="playbackStartSeconds" [endSeconds]="playbackEndSeconds"></app-audio-player>
+</div>

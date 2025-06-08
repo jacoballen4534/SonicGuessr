@@ -42,6 +42,12 @@ export interface LeaderboardResponse {
   currentUserEntry: LeaderboardEntry | null;
 }
 
+// <<< NEW INTERFACE for Genre
+export interface Genre {
+  id: number;
+  name: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -50,6 +56,8 @@ export class ChallengeService {
   private guessApiUrl = `${environment.apiBaseUrl}/daily-challenge/guess`; // New API URL
   private leaderboardApiUrl = `${environment.apiBaseUrl}/leaderboard/daily`; // New API URL
   private practiceSongApiUrl = `${environment.apiBaseUrl}/practice/random-song`; // <<< NEW
+  private genresApiUrl = `${environment.apiBaseUrl}/genres`; // <<< NEW
+  private practiceSongByGenreApiUrl = `${environment.apiBaseUrl}/practice/random-song-by-genre`; // <<< NEW
 
   constructor(private http: HttpClient) { }
 
@@ -80,5 +88,16 @@ export class ChallengeService {
       .set('endYear', endYear.toString());
       
     return this.http.get<DailyChallengeSong>(this.practiceSongApiUrl, { params, withCredentials: false }); // No credentials needed for this public endpoint
+  }
+
+  // Fetches the list of all available genres
+  getAvailableGenres(): Observable<Genre[]> {
+    return this.http.get<Genre[]>(this.genresApiUrl);
+  }
+
+  // Fetches a random song for a specific genre ID
+  getRandomSongByGenre(genreId: number): Observable<DailyChallengeSong> {
+    const params = new HttpParams().set('genreId', genreId.toString());
+    return this.http.get<DailyChallengeSong>(this.practiceSongByGenreApiUrl, { params });
   }
 }

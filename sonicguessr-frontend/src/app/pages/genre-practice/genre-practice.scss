@@ -1,0 +1,207 @@
+// src/app/pages/practice-mode/practice-mode.scss
+
+// Ensure theme variables and sass:color module are available
+// Adjust the path to your theme variables file as needed.
+@use '../../typography/theme-variables.scss' as *; // Adjust path to your theme variables
+@use 'sass:color';
+
+// Main page container
+.practice-mode-page {
+  max-width: 750px;
+  margin: $spacing-lg auto;
+  padding: $spacing-sm;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+}
+
+// Re-use card styling for a consistent look
+.card-style {
+  background-color: $secondary-bg;
+  padding: $spacing-md $spacing-lg;
+  border-radius: $border-radius-lg;
+  box-shadow: $box-shadow-soft;
+}
+
+// Header styling for the page
+.page-header {
+  text-align: center;
+  h2 {
+    font-family: $font-family-headings;
+    color: $accent-primary;
+    margin-top: 0;
+    margin-bottom: $spacing-sm;
+    font-size: 1.8rem;
+  }
+  p {
+    color: $text-muted;
+    font-size: 1rem;
+    margin-top: 0;
+  }
+}
+
+// Form/Settings styling for year selection
+.settings-area {
+  form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: $spacing-md;
+  }
+
+  h4 {
+    margin: 0 0 $spacing-sm 0;
+    font-family: $font-family-headings;
+  }
+
+  .form-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: $spacing-md;
+  }
+
+  .form-field {
+    label {
+      font-weight: 600;
+      margin-right: $spacing-sm;
+      font-family: $font-family-base;
+    }
+    input[type="number"] {
+      padding: 8px 10px;
+      border: 1px solid color.adjust($secondary-bg, $lightness: -15%);
+      border-radius: $border-radius-sm;
+      font-size: 1rem;
+      width: 100px; // Fixed width for year inputs
+      text-align: center;
+      font-family: $font-family-base;
+      &:focus {
+        outline: none;
+        border-color: $accent-primary;
+        box-shadow: 0 0 0 2px rgba($accent-primary, 0.2);
+      }
+    }
+  }
+}
+
+// Consistent styling for loading, error, and other states
+.loading-state, .error-state {
+  text-align: center;
+  padding: $spacing-xl;
+  font-size: 1.1rem;
+  color: $text-muted;
+}
+.error-state { 
+  color: $error-color; // Assumes $error-color is in theme-variables
+  font-weight: 500;
+}
+
+// Active game area layout
+.active-game-area {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+}
+
+// Styling for clue display (album art)
+.clue-area {
+  .song-year-info { // For displaying the song's year
+    text-align: center;
+    font-style: italic;
+    color: $text-muted;
+    font-family: $font-family-base;
+    margin-bottom: $spacing-sm;
+  }
+  .album-art-container {
+    display: flex;
+    justify-content: center;
+    img {
+      width: 250px; 
+      height: 250px;
+      object-fit: contain;
+      border-radius: $border-radius-md;
+      box-shadow: $box-shadow-medium;
+      background-color: color.adjust($secondary-bg, $lightness: -3%);
+    }
+  }
+}
+
+// Styling for audio controls
+.audio-controls-area {
+  text-align: center;
+  p {
+    color: $text-muted;
+    font-weight: 500;
+    font-family: $font-family-base;
+  }
+  .button-group {
+    display: flex;
+    justify-content: center;
+    gap: $spacing-md;
+  }
+}
+
+// Styling for guess input area
+.guess-input-area {
+  text-align: center;
+  h4 {
+    font-family: $font-family-headings;
+    margin-top: 0;
+    margin-bottom: $spacing-md;
+    font-size: 1.2rem;
+  }
+}
+
+
+// Use global button styles (.button-cta, .button-secondary) if defined in styles.scss
+// If not, define them here using your theme variables.
+.button-cta, .button-secondary, .button-dev {
+  padding: 10px 18px;
+  border: none;
+  border-radius: $border-radius-md;
+  font-family: $font-family-base;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+
+  &:disabled {
+    background-color: color.adjust($text-muted, $lightness: -30%) !important; // More pronounced disabled state
+    color: color.adjust($text-muted, $lightness: -10%) !important;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+}
+
+.button-cta { // Primary action button
+  background-color: $accent-primary;
+  color: $white;
+  box-shadow: $box-shadow-soft;
+
+  &:hover:not(:disabled) {
+    background-color: color.adjust($accent-primary, $lightness: -8%);
+    box-shadow: $box-shadow-medium;
+    transform: translateY(-2px);
+  }
+}
+
+.button-cta.large-button { // For "Start Challenge"
+    padding: 15px 40px;
+    font-size: 1.2rem;
+}
+
+.button-secondary { // For skip, or less critical actions
+  background-color: $accent-secondary;
+  color: color.adjust($text-color, $lightness: -15%); // Darker text for yellow bg
+  box-shadow: $box-shadow-soft;
+
+  &:hover:not(:disabled) {
+    background-color: color.adjust($accent-secondary, $lightness: -10%);
+    box-shadow: $box-shadow-medium;
+    transform: translateY(-2px);
+  }
+}
