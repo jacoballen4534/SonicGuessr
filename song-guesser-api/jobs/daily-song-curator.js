@@ -188,21 +188,6 @@ async function curateDailySongs() {
 
 // startDailyJob function remains the same
 function startDailyJob() {
-    cron.schedule('0 1 * * *', async () => { 
-        console.log(`[${new Date().toISOString()}] Cron job triggered for daily song curation.`);
-        try {
-            await dbInitializationPromise; 
-            await curateDailySongs();
-        } catch (error) {
-            console.error("Daily song curation cron job failed:", error.message);
-        }
-    }, {
-        scheduled: true,
-        timezone: "UTC" // Example: Run at 1 AM UTC
-    });
-    console.log('Daily song curation job scheduled (e.g., 1:00 AM UTC). Check timezone.');
-
-    // Initial run on startup after a delay to ensure DB is fully ready and other startups might have finished
     (async () => {
         try {
             console.log('Waiting for DB and a moment before initial song curation on startup...');
@@ -216,5 +201,34 @@ function startDailyJob() {
         }
     })();
 }
+// function startDailyJob() {
+//     cron.schedule('0 1 * * *', async () => { 
+//         console.log(`[${new Date().toISOString()}] Cron job triggered for daily song curation.`);
+//         try {
+//             await dbInitializationPromise; 
+//             await curateDailySongs();
+//         } catch (error) {
+//             console.error("Daily song curation cron job failed:", error.message);
+//         }
+//     }, {
+//         scheduled: true,
+//         timezone: "UTC" // Example: Run at 1 AM UTC
+//     });
+//     console.log('Daily song curation job scheduled (e.g., 1:00 AM UTC). Check timezone.');
+
+//     // Initial run on startup after a delay to ensure DB is fully ready and other startups might have finished
+//     (async () => {
+//         try {
+//             console.log('Waiting for DB and a moment before initial song curation on startup...');
+//             await dbInitializationPromise; 
+//             await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+            
+//             console.log('Attempting initial song curation on startup...');
+//             await curateDailySongs();
+//         } catch (error) {
+//             console.error("Initial song curation on startup failed:", error.message);
+//         }
+//     })();
+// }
 
 module.exports = { startDailyJob, curateDailySongs };
