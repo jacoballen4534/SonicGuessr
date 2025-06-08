@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiBaseUrl: 'http://spliffmon.freeddns.org:5003/api' // Or your production API URL
+  apiBaseUrl: 'https://spliffmon.freeddns.org:5004/api' // Or your production API URL
 };
