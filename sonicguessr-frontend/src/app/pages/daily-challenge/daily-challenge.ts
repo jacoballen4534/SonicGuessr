@@ -11,7 +11,7 @@ import { Subscription } from 'rxjs';
 
 
 
-const snippetLevelsData = [
+export const snippetLevelsData = [
   { id: 1, start: 0, end: 0.1, durationText: '0.1 seconds' },  // Level 1
   { id: 2, start: 0, end: 0.5, durationText: '0.5 seconds' },  // Level 2
   { id: 3, start: 0, end: 2, durationText: '2 seconds' }, // Level 3

@@ -1,6 +1,6 @@
 // src/app/services/challenge.service.ts
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { DailyChallengeSong } from '../models/daily-song.model';
 import { environment } from '../../environments/environment';
@@ -49,6 +49,7 @@ export class ChallengeService {
   private songsApiUrl = `${environment.apiBaseUrl}/daily-challenge/songs`;
   private guessApiUrl = `${environment.apiBaseUrl}/daily-challenge/guess`; // New API URL
   private leaderboardApiUrl = `${environment.apiBaseUrl}/leaderboard/daily`; // New API URL
+  private practiceSongApiUrl = `${environment.apiBaseUrl}/practice/random-song`; // <<< NEW
 
   constructor(private http: HttpClient) { }
 
@@ -70,5 +71,14 @@ export class ChallengeService {
     return this.http.get<LeaderboardResponse>(this.leaderboardApiUrl, {
       withCredentials: true
     });
+  }
+
+  // --- NEW METHOD for Practice Mode ---
+  getRandomSongForPractice(startYear: number, endYear: number): Observable<DailyChallengeSong> {
+    const params = new HttpParams()
+      .set('startYear', startYear.toString())
+      .set('endYear', endYear.toString());
+      
+    return this.http.get<DailyChallengeSong>(this.practiceSongApiUrl, { params, withCredentials: false }); // No credentials needed for this public endpoint
   }
 }

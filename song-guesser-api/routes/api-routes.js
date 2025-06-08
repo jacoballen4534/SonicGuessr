@@ -208,6 +208,71 @@ router.post('/daily-challenge/guess', async (req, res) => {
     });
 });
 
+router.get('/practice/random-song', async (req, res) => {
+    let { startYear, endYear } = req.query;
+
+    if (!startYear) {
+        return res.status(400).json({ error: 'A startYear is required.' });
+    }
+
+    // Default endYear to startYear if not provided
+    endYear = endYear || startYear;
+
+    const start = parseInt(startYear, 10);
+    const end = parseInt(endYear, 10);
+
+    if (isNaN(start) || isNaN(end) || start > end) {
+        return res.status(400).json({ error: 'Invalid year range provided.' });
+    }
+
+    console.log(`[API Practice] Fetching random song between ${start} and ${end}`);
+    const dbInstance = getDb();
+
+    try {
+        const sql = `
+            SELECT 
+                title, 
+                artist, 
+                year,
+                album_art_url, 
+                duration_ms, 
+                youtube_video_id,
+                spotify_track_id AS track_id_from_source 
+                -- We don't need a specific DB ID for this unscored mode
+            FROM curated_songs
+            WHERE 
+                (year >= ? AND year <= ?)
+                AND youtube_video_id IS NOT NULL 
+                AND spotify_track_id IS NOT NULL 
+                AND spotify_track_id NOT LIKE 'SPOTIFY_%' AND spotify_track_id NOT LIKE 'ERROR_%'
+                AND youtube_video_id NOT LIKE 'YOUTUBE_%' AND youtube_video_id NOT LIKE 'ERROR_%'
+                AND album_art_url IS NOT NULL
+                AND duration_ms IS NOT NULL
+                AND (is_active = 1 OR is_active IS NULL)
+            ORDER BY RANDOM()
+            LIMIT 1;
+        `;
+
+        const song = await new Promise((resolve, reject) => {
+            dbInstance.get(sql, [start, end], (err, row) => {
+                if (err) return reject(err);
+                resolve(row);
+            });
+        });
+
+        if (song) {
+            console.log(`[API Practice] Found song: "${song.title}" by ${song.artist}`);
+            res.json(song);
+        } else {
+            console.log(`[API Practice] No playable songs found for year range ${start}-${end}.`);
+            res.status(404).json({ message: `No playable songs found for the selected year range (${start}-${end}). Please try a different range.` });
+        }
+    } catch (err) {
+        console.error("[API Practice] Error fetching random song:", err.message);
+        res.status(500).json({ error: 'Failed to retrieve a random song.' });
+    }
+});
+
 
 router.patch('/user/profile', isAuthenticated, async (req, res) => {
     const userId = req.user.id; // Get user ID from the authenticated session
