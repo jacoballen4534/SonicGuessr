@@ -440,7 +440,7 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy {
       this.feedbackDisplay_type = 'info';
       this.playCurrentSnippet(); 
     } else {
-      this.feedbackDisplay_message = `You're already at the last snippet level for "${this.activeSong.title}"!`;
+      this.feedbackDisplay_message = `You're already at the last snippet level for this song!`;
       this.feedbackDisplay_type = 'info';
     }
   }
@@ -524,7 +524,7 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy {
       this.playbackVideoId = this.activeSong.youtube_video_id;
       this.playbackStartSeconds = levelConfig.start;
       this.playbackEndSeconds = levelConfig.end;
-      console.log(`Prepared to play snippet for "${this.activeSong.title}", Level ${levelConfig.id} (${levelConfig.durationText})`);
+      // console.log(`Prepared to play snippet for "${this.activeSong.title}", Level ${levelConfig.id} (${levelConfig.durationText})`);
       this.updateAlbumArtBlur();
       setTimeout(() => {
         if (this.audioPlayerRef) {
