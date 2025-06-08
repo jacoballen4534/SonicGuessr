@@ -1,0 +1,10 @@
+To start pm2 from ecosystem file
+
+pm2 start ecosystem.config.js --env production
+
+For nginx logs
+tail -f /var/log/nginx/sonicguessr.error.log
+or
+tail -f /var/log/nginx/sonicguessr.error.log /var/log/nginx/sonicguessr.access.log
+
+
