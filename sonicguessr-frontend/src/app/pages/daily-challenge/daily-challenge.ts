@@ -109,7 +109,7 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy {
         next: (response: DailyChallengeResponse) => {
           this.dailySongs = response.songs || [];
           this.isLoading = false;
-          console.log('Daily songs response:', response);
+          // console.log('Daily songs response:', response);
 
           if (this.isAuthenticated) {
             this.challengeCompletedTodayByPlayer = response.challengeCompletedToday;
