@@ -146,6 +146,12 @@
       max-height: 100%;
       object-fit: contain; // Or 'cover'
       border-radius: $border-radius-sm; // Slight rounding if image distinct from container
+
+      // --- Add these three lines to prevent dragging ---
+      pointer-events: none;      // Makes the image uninteractable with the mouse
+      user-select: none;         // Prevents the user from highlighting/selecting the image
+      -webkit-user-drag: none;   // A non-standard but effective property for webkit browsers (Chrome, Safari)
+
       
       // opacity: 0; // Initially hidden
       // transition: opacity 0.4s ease-in-out; // Fade-in transition
