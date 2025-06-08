@@ -74,6 +74,7 @@ export class PracticeModeComponent implements OnInit {
     this.error = null;
     this.feedbackDisplay_message = 'Finding a random song...';
     this.feedbackDisplay_type = 'info';
+    this.feedbackDisplay_correctAnswer = null; // Clear previous answer
 
     const { startYear, endYear } = this.yearSelectionForm.value;
 
@@ -81,8 +82,8 @@ export class PracticeModeComponent implements OnInit {
       next: (song) => {
         this.isLoadingSong = false;
         this.activeSong = song;
-        this.currentSnippetLevelIndex = 0; // Reset snippet level
-        this.feedbackDisplay_message = ''; // Clear loading message
+        this.currentSnippetLevelIndex = 0; // Reset snippet level for new song
+        this.feedbackDisplay_message = ''; // Clear "Finding..." message
         this.feedbackDisplay_type = null;
         this.playCurrentSnippet(); // Automatically play first snippet
       },
@@ -129,10 +130,24 @@ export class PracticeModeComponent implements OnInit {
     if (normalizedGuess === normalizedTitle) {
       this.feedbackDisplay_message = `Correct! It was "${this.activeSong.title}". Get another song when you're ready!`;
       this.feedbackDisplay_type = 'correct';
+      this.feedbackDisplay_correctAnswer = { title: this.activeSong.title, artist: this.activeSong.artist };
       this.activeSong = null; // Clear song so user can fetch a new one
     } else {
-      this.feedbackDisplay_message = 'Incorrect. Try the next snippet or guess again!';
+      // Incorrect guess: check if there are more levels
+      if (this.currentSnippetLevelIndex < this.snippetLevels.length - 1) {
+        this.feedbackDisplay_message = 'Not quite! Playing a longer snippet...';
+        this.feedbackDisplay_type = 'incorrect';
+        // Automatically play the next snippet after a short delay for user to read feedback
+        setTimeout(() => {
+          this.playNextSnippetLevel();
+        }, 1500); // 1.5 second delay
+      } else {
+        // Last guess was wrong on the final snippet
+        this.feedbackDisplay_message = `That was the last try! The song was "${this.activeSong.title}".`;
       this.feedbackDisplay_type = 'incorrect';
+        this.feedbackDisplay_correctAnswer = { title: this.activeSong.title, artist: this.activeSong.artist };
+        this.activeSong = null; // Game over for this song, clear it so user can get a new one
+      }
     }
   }
 }

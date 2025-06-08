@@ -64,7 +64,6 @@
     input[type="number"] {
       padding: 8px 10px;
       border: 1px solid color.adjust($secondary-bg, $lightness: -15%);
-
       border-radius: $border-radius-sm;
       font-size: 1rem;
       width: 100px; // Fixed width for year inputs
@@ -104,6 +103,10 @@
 
 .audio-controls-area {
   text-align: center;
+  p {
+    color: $text-muted;
+    font-weight: 500;
+  }
   .button-group {
     display: flex;
     justify-content: center;
