@@ -78,7 +78,7 @@ export class DailyChallenge implements OnInit, AfterViewInit, OnDestroy {
   }
 
   getTodayDateString(): string {
-    return new Date().toISOString().slice(0, 10);
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'Pacific/Auckland' });
   }
 
   ngOnInit(): void {

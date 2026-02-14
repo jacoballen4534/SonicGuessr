@@ -9,10 +9,10 @@
 const cron = require('node-cron');
 const { getDb, dbInitializationPromise } = require('../services/database-service');
 const spotifyService = require('../services/music-source-service'); // This now exports getTracksForDailyChallenge
-const { DAILY_SONG_COUNT } = require('../config');
+const { DAILY_SONG_COUNT, APP_TIMEZONE } = require('../config');
 
 function getTodayDateString() {
-    return new Date().toISOString().slice(0, 10);
+    return new Date().toLocaleDateString('en-CA', { timeZone: APP_TIMEZONE });
 }
 
 async function curateDailySongs() {
@@ -40,7 +40,7 @@ async function curateDailySongs() {
                 // and not have been used too recently (e.g., in the last 30 days).
                 const thirtyDaysAgo = new Date();
                 thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-                const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().slice(0,10);
+                const thirtyDaysAgoStr = thirtyDaysAgo.toLocaleDateString('en-CA', { timeZone: APP_TIMEZONE });
 
                 const selectCuratedSql = `
                     SELECT 

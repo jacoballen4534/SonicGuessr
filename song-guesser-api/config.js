@@ -34,4 +34,5 @@ module.exports = {
     MUSICBRAINZ_APP_VERSION: process.env.MUSICBRAINZ_APP_VERSION || '1.0.0',
     MUSICBRAINZ_CONTACT_EMAIL: process.env.MUSICBRAINZ_CONTACT_EMAIL || '', // Or a link to your project
 
+    APP_TIMEZONE: process.env.APP_TIMEZONE || 'Pacific/Auckland',
 };

@@ -11,13 +11,13 @@
 const express = require('express');
 const router = express.Router();
 const { getDb } = require('../services/database-service');
-const { SESSION_MAX_LEVELS, DAILY_SONG_COUNT } = require('../config'); // Assuming MAX_LEVELS is defined in config
+const { SESSION_MAX_LEVELS, DAILY_SONG_COUNT, APP_TIMEZONE } = require('../config'); // Assuming MAX_LEVELS is defined in config
 const musicSourceService = require('../services/music-source-service');
 
 
 // Helper function to get today's date string (YYYY-MM-DD)
 function getTodayDateString() {
-    return new Date().toISOString().slice(0, 10);
+    return new Date().toLocaleDateString('en-CA', { timeZone: APP_TIMEZONE });
 }
 
 // Middleware to check if user is authenticated (example, adjust as per your auth setup)
